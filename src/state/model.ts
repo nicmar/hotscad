@@ -11,6 +11,7 @@ import { ProcessStreams } from "../runner/openscad-runner.ts";
 import { is2DFormatExtension } from "./formats.ts";
 import { parseOff } from "../io/import_off.ts";
 import { exportGlb } from "../io/export_glb.ts";
+import { computeConnectedComponents } from "../io/components.ts";
 import { export3MF } from "../io/export_3mf.ts";
 import chroma from "chroma-js";
 import { reconcileVarsWithParameterSet } from './customizer-reconcile';
@@ -432,8 +433,17 @@ export class Model {
       } else {
         is2D = false;
       }
+      let componentBboxes: Array<{
+        min: [number, number, number],
+        max: [number, number, number],
+        center: [number, number, number],
+        size: [number, number, number],
+      }> | undefined;
       if (displayFile.name.endsWith('.off')) {
         const offData = parseOff(await displayFile.text());
+        componentBboxes = computeConnectedComponents(offData).map(c => ({
+          min: c.min, max: c.max, center: c.center, size: c.size,
+        }));
         displayFile = new File([await exportGlb(offData)], displayFile.name.replace('.off', '.glb'));
       }
       const outFileURL = URL.createObjectURL(output.outFile);
@@ -462,6 +472,7 @@ export class Model {
           elapsedMillis: output.elapsedMillis,
           formattedElapsedMillis: formatMillis(output.elapsedMillis),
           formattedOutFileSize: formatBytes(output.outFile.size),
+          componentBboxes,
         };
 
         if (!isPreview) {

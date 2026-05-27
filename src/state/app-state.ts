@@ -56,6 +56,7 @@ export interface State {
     
     color: string,
     showAxes?: boolean,
+    showDimensions?: boolean,
     lineNumbers?: boolean,
   }
 
@@ -75,6 +76,12 @@ export interface State {
   is2D?: boolean,
   output?: FileOutput & {
     isPreview: boolean,
+    componentBboxes?: Array<{
+      min: [number, number, number],
+      max: [number, number, number],
+      center: [number, number, number],
+      size: [number, number, number],
+    }>,
   },
   export?: FileOutput,
 };

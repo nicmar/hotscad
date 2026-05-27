@@ -78,7 +78,7 @@ export function attachCameraController(
 
   function rotate(dx: number, dy: number) {
     const orbit = el.getCameraOrbit();
-    const sens = 0.015;
+    const sens = 0.04;
     updateOrbit(orbit.theta - dx * sens, orbit.phi - dy * sens, orbit.radius);
   }
 

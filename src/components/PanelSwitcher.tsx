@@ -4,6 +4,7 @@ import React, { useContext } from 'react';
 import { SingleLayoutComponentId } from '../state/app-state.ts'
 import { TabMenu } from 'primereact/tabmenu';
 import { ToggleButton } from 'primereact/togglebutton';
+import { Checkbox } from 'primereact/checkbox';
 import { ModelContext } from './contexts.ts';
 
 export default function PanelSwitcher() {
@@ -52,10 +53,30 @@ export default function PanelSwitcher() {
                   style={{
                     flex: 1,
                   }}
-                  model={singleTargets.map(({icon, label, id}) => 
+                  model={singleTargets.map(({icon, label, id}) =>
                   ({icon, label, command: () => model.changeSingleVisibility(id)}))} />
               </>
         }
+
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginLeft: '10px',
+            fontSize: 12,
+            userSelect: 'none',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+          title="Show model bounding-box dimensions in mm">
+          <Checkbox
+            inputId="showDimensions"
+            checked={!!state.view.showDimensions}
+            onChange={e => model.mutate(s => { s.view.showDimensions = !!e.checked; })}
+          />
+          Show dimensions
+        </label>
       </div>
     </div>
   );

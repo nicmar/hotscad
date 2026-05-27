@@ -3,6 +3,8 @@
 import { CSSProperties, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ModelContext } from './contexts.ts';
 import { attachCameraController } from './CameraController';
+import { ViewCube } from './ViewCube';
+import { projectToViewport } from '../io/components.ts';
 import { Toast } from 'primereact/toast';
 import { blurHashToImage, imageToBlurhash, imageToThumbhash, thumbHashToImage } from '../io/image_hashes.ts';
 
@@ -14,51 +16,12 @@ declare global {
   }
 }
 
-export const PREDEFINED_ORBITS: [string, number, number][] = [
-  ["Diagonal", Math.PI / 4, Math.PI / 4],
-  ["Front", 0, Math.PI / 2],
-  ["Right", Math.PI / 2, Math.PI / 2],
-  ["Back", Math.PI, Math.PI / 2],
-  ["Left", -Math.PI / 2, Math.PI / 2],
-  ["Top", 0, 0],
-  ["Bottom", 0, Math.PI],
-];
-
-function spherePoint(theta: number, phi: number): [number, number, number] {
-  return [
-    Math.cos(theta) * Math.sin(phi),
-    Math.sin(theta) * Math.sin(phi),
-    Math.cos(phi),
-  ];
-}
-
-function euclideanDist(a: [number, number, number], b: [number, number, number]): number {
-  const dx = a[0] - b[0];
-  const dy = a[1] - b[1];
-  const dz = a[2] - b[2];
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-const radDist = (a: number, b: number) => Math.min(Math.abs(a - b), Math.abs(a - b + 2 * Math.PI), Math.abs(a - b - 2 * Math.PI));
-
-function getClosestPredefinedOrbitIndex(theta: number, phi: number): [number, number, number] {
-  const point = spherePoint(theta, phi);
-  const points = PREDEFINED_ORBITS.map(([_, t, p]) => spherePoint(t, p));
-  const distances = points.map(p => euclideanDist(point, p));
-  const radDistances = PREDEFINED_ORBITS.map(([_, ptheta, pphi]) => Math.max(radDist(theta, ptheta), radDist(phi, pphi)));
-  const [index, dist] = distances.reduce((acc, d, i) => d < acc[1] ? [i, d] : acc, [0, Infinity]) as [number, number];
-  return [index, dist, radDistances[index]];
-}
-
-const originalOrbit = (([name, theta, phi]) => `${theta}rad ${phi}rad auto`)(PREDEFINED_ORBITS[0]);
-
 export default function ViewerPanel({className, style}: {className?: string, style?: CSSProperties}) {
   const model = useContext(ModelContext);
   if (!model) throw new Error('No model');
 
   const state = model.state;
-  const [interactionPrompt, setInteractionPrompt] = useState('auto');
   const modelViewerRef = useRef<any>();
-  const axesViewerRef = useRef<any>();
   const toastRef = useRef<Toast>(null);
   const stashedCameraRef = useRef<{orbit: string; target: string} | null>(null);
 
@@ -99,7 +62,7 @@ export default function ViewerPanel({className, style}: {className?: string, sty
     const uri = await modelViewerRef.current.toDataURL('image/png', 0.5);
     const preview = {blurhash: await imageToBlurhash(uri)};
     // const preview = {thumbhash: await imageToThumbhash(uri)};
-    
+
     model?.mutate(s => s.preview = preview);
   }, [model, modelUri, setLoadedUri, modelViewerRef.current]);
 
@@ -115,14 +78,18 @@ export default function ViewerPanel({className, style}: {className?: string, sty
   useEffect(() => {
     const mv = modelViewerRef.current;
     if (!mv) return;
-    const cleanup = attachCameraController(mv, { axesViewerEl: axesViewerRef.current ?? null });
+    const cleanup = attachCameraController(mv, { axesViewerEl: null });
     return cleanup;
-  }, [modelViewerRef.current, axesViewerRef.current]);
+  }, [modelViewerRef.current]);
 
   useLayoutEffect(() => {
     return () => {
       const el = modelViewerRef.current;
       if (!el) return;
+      // Only stash if the previous model actually finished loading. Otherwise we'd
+      // capture model-viewer's pre-load defaults (radius=auto/NaN, target=origin)
+      // and restore them onto the first real model, sending the camera off-screen.
+      if (!el.loaded) return;
       try {
         stashedCameraRef.current = {
           orbit: el.getCameraOrbit().toString(),
@@ -134,49 +101,77 @@ export default function ViewerPanel({className, style}: {className?: string, sty
     };
   }, [modelUri]);
 
-  // Cycle through predefined views when user clicks on the axes viewer
-  useEffect(() => {
-    let mouseDownSpherePoint: [number, number, number] | undefined;
-    function getSpherePoint() {
-      const orbit = axesViewerRef.current.getCameraOrbit();
-      return spherePoint(orbit.theta, orbit.phi);
+  const fitToView = useCallback(() => {
+    const el = modelViewerRef.current;
+    if (!el) return;
+    stashedCameraRef.current = null;
+    try {
+      el.cameraTarget = 'auto auto auto';
+      el.cameraOrbit = '45deg 75deg 105%';
+    } catch {
+      // ignore
     }
-    function onMouseDown(e: MouseEvent) {
-      if (e.target === axesViewerRef.current) {
-        mouseDownSpherePoint = getSpherePoint();
-      }
-    }
-    function onMouseUp(e: MouseEvent) {
-      if (e.target === axesViewerRef.current) {
-        const euclEps = 0.01;
-        const radEps = 0.1;
+  }, []);
 
-        const spherePoint = getSpherePoint();
-        const clickDist = mouseDownSpherePoint ? euclideanDist(spherePoint, mouseDownSpherePoint) : Infinity;
-        if (clickDist > euclEps) {
-          return;
-        }
-        // Note: unlike the axes viewer, the model viewer has a prompt that makes the model wiggle around, we only fetch it to get the radius.
-        const axesOrbit = axesViewerRef.current.getCameraOrbit();
-        const modelOrbit = modelViewerRef.current.getCameraOrbit();
-        const [currentIndex, dist, radDist] = getClosestPredefinedOrbitIndex(axesOrbit.theta, axesOrbit.phi);
-        const newIndex = dist < euclEps && radDist < radEps ? (currentIndex + 1) % PREDEFINED_ORBITS.length : currentIndex;
-        const [name, theta, phi] = PREDEFINED_ORBITS[newIndex];
-        Object.assign(modelOrbit, {theta, phi});
-        const newOrbit = modelViewerRef.current.cameraOrbit = axesViewerRef.current.cameraOrbit = modelOrbit.toString();
-        toastRef.current?.show({severity: 'info', detail: `${name} view`, life: 1000,});
-        setInteractionPrompt('none');
-      }
+  // Per-object label projection: track screen positions of bounding-box centers,
+  // updated on every camera-change.
+  const [labelPositions, setLabelPositions] = useState<Array<{
+    x: number, y: number, sizeX: number, sizeY: number, sizeZ: number,
+  }>>([]);
+
+  useEffect(() => {
+    const el = modelViewerRef.current;
+    if (!el) return;
+    if (!state.view.showDimensions) {
+      setLabelPositions([]);
+      return;
     }
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mouseup', onMouseUp);
-    // window.addEventListener('click', onClick);
-    return () => {
-      // window.removeEventListener('click', onClick);
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mouseup', onMouseUp);
+    const boxes = state.output?.componentBboxes;
+    if (!boxes || boxes.length === 0) {
+      setLabelPositions([]);
+      return;
+    }
+
+    const updatePositions = () => {
+      try {
+        const o = el.getCameraOrbit();
+        const t = el.getCameraTarget();
+        const fov = el.getFieldOfView?.() ?? 45;
+        const rect = el.getBoundingClientRect();
+        const w = rect.width, h = rect.height;
+        const next = boxes.map(box => {
+          // Transform OFF (Z-up) → scene (Y-up) per model-viewer orientation="0deg -90deg 0deg":
+          // (x, y, z)_OFF → (x, z, -y)_scene
+          // Anchor the label at the BOTTOM of the bbox (lowest OFF Z) so it sits "below the item."
+          const sceneX = box.center[0];                 // OFF x → scene x
+          const sceneY = box.min[2];                    // OFF min z → scene min y (bottom)
+          const sceneZ = -box.center[1];                // OFF y → scene -z (centered)
+          const [u, v, vz] = projectToViewport(
+            [sceneX, sceneY, sceneZ],
+            [t.x, t.y, t.z],
+            o.theta, o.phi, o.radius, fov, w, h,
+          );
+          return {
+            x: u,
+            y: v,
+            sizeX: box.size[0],
+            sizeY: box.size[1],
+            sizeZ: box.size[2],
+            visible: vz > 0,
+          };
+        }).filter(p => (p as any).visible) as any;
+        setLabelPositions(next);
+      } catch { /* ignore */ }
     };
-  });
+
+    updatePositions();
+    el.addEventListener('camera-change', updatePositions);
+    window.addEventListener('resize', updatePositions);
+    return () => {
+      el.removeEventListener('camera-change', updatePositions);
+      window.removeEventListener('resize', updatePositions);
+    };
+  }, [state.view.showDimensions, state.output?.componentBboxes, modelViewerRef.current, loaded]);
 
   return (
     <div className={className}
@@ -222,44 +217,38 @@ export default function ViewerPanel({className, style}: {className?: string, sty
           width: '100%',
           height: '100%',
         }}
-        interaction-prompt={interactionPrompt}
+        interaction-prompt="none"
         environment-image="./skybox-lights.jpg"
-        max-camera-orbit="auto 180deg auto"
-        min-camera-orbit="auto 0deg auto"
+        max-camera-orbit="auto 180deg 100000m"
+        min-camera-orbit="auto 0deg 0m"
         ar
         ref={modelViewerRef}
       >
         <span slot="progress-bar"></span>
       </model-viewer>
-      {state.view.showAxes && (
-        <model-viewer
-                orientation="0deg -90deg 0deg"
-                src="./axes.glb"
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  zIndex: 10,
-                  height: '100px',
-                  width: '100px',
-                }}
-                loading="eager"
-                camera-orbit={originalOrbit}
-                // interpolation-decay="0"
-                environment-image="./skybox-lights.jpg"
-                max-camera-orbit="auto 180deg auto"
-                min-camera-orbit="auto 0deg auto"
-                orbit-sensitivity="5"
-                interaction-prompt="none"
-                camera-controls="false"
-                disable-zoom
-                disable-tap 
-                disable-pan
-                ref={axesViewerRef}
+      <ViewCube modelViewerRef={modelViewerRef} onHomeClick={fitToView} />
+      {state.view.showDimensions && loaded && labelPositions.map((p, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: `${p.x}px`,
+            top: `${p.y + 8}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            padding: '3px 6px',
+            background: 'rgba(0,0,0,0.7)',
+            color: '#fff',
+            font: '11px/1.3 monospace',
+            borderRadius: '3px',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+          title="Bounding box of this object"
         >
-          <span slot="progress-bar"></span>
-        </model-viewer>
-      )}
+          {`${p.sizeX.toFixed(2)} × ${p.sizeY.toFixed(2)} × ${p.sizeZ.toFixed(2)} mm`}
+        </div>
+      ))}
     </div>
   )
 }

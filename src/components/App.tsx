@@ -10,6 +10,7 @@ import { ModelContext, FSContext } from './contexts';
 import PanelSwitcher from './PanelSwitcher';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import CustomizerPanel from './CustomizerPanel';
+import { Splitter, SplitterPanel } from 'primereact/splitter';
 
 
 export function App({initialState, statePersister, fs}: {initialState: State, statePersister: StatePersister, fs: FS}) {
@@ -82,24 +83,48 @@ export function App({initialState, statePersister, fs}: {initialState: State, st
           
           <PanelSwitcher />
     
-          <div className={mode === 'multi' ? 'flex flex-row' : 'flex flex-column'}
-              style={mode === 'multi' ? {flex: 1} : {
-                flex: 1,
-                position: 'relative'
-              }}>
-
-            <EditorPanel className={`
-              opacity-animated
-              ${layout.mode === 'single' && layout.focus !== 'editor' ? 'opacity-0' : ''}
-              ${layout.mode === 'single' ? 'absolute-fill' : ''}
-            `} style={getPanelStyle('editor')} />
-            <ViewerPanel className={layout.mode === 'single' ? `absolute-fill` : ''} style={getPanelStyle('viewer')} />
-            <CustomizerPanel className={`
-              opacity-animated
-              ${layout.mode === 'single' && layout.focus !== 'customizer' ? 'opacity-0' : ''}
-              ${layout.mode === 'single' ? `absolute-fill` : ''}
-            `} style={getPanelStyle('customizer')} />
-          </div>
+          {layout.mode === 'multi' ? (
+            (() => {
+              const multi = layout;
+              const visible: MultiLayoutComponentId[] = [];
+              if (multi.editor) visible.push('editor');
+              if (multi.viewer) visible.push('viewer');
+              if (multi.customizer) visible.push('customizer');
+              const initialSize = visible.length > 0 ? 100 / visible.length : 100;
+              const renderPanel = (id: MultiLayoutComponentId) => {
+                if (id === 'editor') return <EditorPanel className="opacity-animated" style={{flex: 1, width: '100%', height: '100%'}} />;
+                if (id === 'viewer') return <ViewerPanel style={{flex: 1, width: '100%', height: '100%'}} />;
+                return <CustomizerPanel className="opacity-animated" style={{flex: 1, width: '100%', height: '100%'}} />;
+              };
+              return (
+                <Splitter style={{flex: 1, border: 'none'}} gutterSize={6}>
+                  {visible.map(id => (
+                    <SplitterPanel key={id} size={initialSize} minSize={10} style={{display: 'flex', overflow: 'hidden'}}>
+                      {renderPanel(id)}
+                    </SplitterPanel>
+                  )) as any}
+                </Splitter>
+              );
+            })()
+          ) : (
+            <div className='flex flex-column'
+                style={{
+                  flex: 1,
+                  position: 'relative'
+                }}>
+              <EditorPanel className={`
+                opacity-animated
+                ${layout.focus !== 'editor' ? 'opacity-0' : ''}
+                absolute-fill
+              `} style={getPanelStyle('editor')} />
+              <ViewerPanel className={`absolute-fill`} style={getPanelStyle('viewer')} />
+              <CustomizerPanel className={`
+                opacity-animated
+                ${layout.focus !== 'customizer' ? 'opacity-0' : ''}
+                absolute-fill
+              `} style={getPanelStyle('customizer')} />
+            </div>
+          )}
 
           <Footer />
           <ConfirmDialog />
