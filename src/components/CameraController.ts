@@ -49,6 +49,49 @@ export function attachCameraController(
   };
   el.addEventListener('load', onFirstLoad);
 
+  // Near-plane override. model-viewer's internal `updateNearFar` clamps the
+  // camera near to `far / 1000`, so once you zoom closer than ~0.1% of the
+  // bounding box, geometry between camera and near gets clipped and the model
+  // appears to vanish. The scene + camera live on symbol-keyed properties of
+  // the element (not `el.scene` / `el.camera`), so we walk own symbols to find
+  // the scene object — it's identified by having an `updateNearFar` method.
+  // We re-assert near every animation frame because model-viewer re-clamps it
+  // on its own schedule.
+  type ThreeCameraLike = { near: number; far: number; updateProjectionMatrix?: () => void };
+  type ModelSceneLike = { camera?: ThreeCameraLike; getCamera?: () => ThreeCameraLike; updateNearFar: (n: number, f: number) => void };
+
+  let cachedScene: ModelSceneLike | null = null;
+  function findScene(): ModelSceneLike | null {
+    if (cachedScene) return cachedScene;
+    const anyEl = el as unknown as Record<string | symbol, unknown>;
+    for (const sym of Object.getOwnPropertySymbols(el)) {
+      const v = anyEl[sym] as ModelSceneLike | undefined;
+      if (v && typeof v.updateNearFar === 'function') {
+        cachedScene = v;
+        return v;
+      }
+    }
+    return null;
+  }
+  function getCamera(scene: ModelSceneLike): ThreeCameraLike | null {
+    return scene.getCamera?.() ?? scene.camera ?? null;
+  }
+
+  let rafId = 0;
+  const tickNearOverride = () => {
+    const scene = findScene();
+    const cam = scene ? getCamera(scene) : null;
+    if (cam && Number.isFinite(cam.far) && cam.far > 0) {
+      const desiredNear = Math.max(1e-6, cam.far * 1e-7);
+      if (cam.near !== desiredNear) {
+        cam.near = desiredNear;
+        cam.updateProjectionMatrix?.();
+      }
+    }
+    rafId = requestAnimationFrame(tickNearOverride);
+  };
+  rafId = requestAnimationFrame(tickNearOverride);
+
   type Mode = 'rotate' | 'pan' | null;
   const activePointers = new Map<number, { x: number; y: number; type: string }>();
   let mode: Mode = null;
@@ -202,5 +245,6 @@ export function attachCameraController(
     el.removeEventListener('wheel', onWheel);
     el.removeEventListener('contextmenu', onContextMenu);
     el.removeEventListener('load', onFirstLoad);
+    cancelAnimationFrame(rafId);
   };
 }

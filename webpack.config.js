@@ -116,6 +116,16 @@ const config = [
             from: path.resolve(__dirname, 'src/wasm/openscad.wasm'),
             to: path.resolve(__dirname, 'dist'),
           },
+          {
+            from: path.resolve(__dirname, 'node_modules/primereact/resources/themes/lara-light-indigo'),
+            to: path.resolve(__dirname, 'dist/themes/lara-light-indigo'),
+            toType: 'dir',
+          },
+          {
+            from: path.resolve(__dirname, 'node_modules/primereact/resources/themes/lara-dark-indigo'),
+            to: path.resolve(__dirname, 'dist/themes/lara-dark-indigo'),
+            toType: 'dir',
+          },
         ],
       }),
     ],

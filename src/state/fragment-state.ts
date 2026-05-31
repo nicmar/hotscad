@@ -1,9 +1,35 @@
 // Portions of this file are Copyright 2021 Google LLC, and licensed under GPL2+. See COPYING.
 
-import { State } from "./app-state.ts";
+import { LayerColorsConfig, State } from "./app-state.ts";
 import { VALID_EXPORT_FORMATS_2D, VALID_EXPORT_FORMATS_3D } from './formats.ts';
 import { validateArray, validateBoolean, validateString, validateStringEnum } from "../utils.ts";
 import { createInitialState, defaultModelColor, defaultSourcePath } from "./initial-state.ts";
+
+function validateLayerColors(input: unknown): LayerColorsConfig | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: LayerColorsConfig = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== 'object') {
+      out.push({ layers: [] });
+      continue;
+    }
+    const layersIn = (entry as any).layers;
+    const layers: { from: number; color: string }[] = [];
+    if (Array.isArray(layersIn)) {
+      for (const l of layersIn) {
+        if (!l || typeof l !== 'object') continue;
+        const from = typeof l.from === 'number' ? l.from : NaN;
+        const color = typeof l.color === 'string' ? l.color : '';
+        if (!Number.isFinite(from) || !color) continue;
+        // Note: older fragments may carry a `to` field; we silently drop it
+        // since the model is now from-only.
+        layers.push({ from, color });
+      }
+    }
+    out.push({ layers });
+  }
+  return out.length > 0 ? out : undefined;
+}
 
 export function buildUrlForStateParams(state: State) {//partialState: {params: State['params'], view: State['view']}) {
   return `${location.protocol}//${location.host}${location.pathname}#${encodeStateParamsAsFragment(state)}`;
@@ -83,6 +109,7 @@ export async function readStateFromFragment(): Promise<State | null> {
           exportFormat2D: validateStringEnum(params?.exportFormat2D, Object.keys(VALID_EXPORT_FORMATS_2D), s => 'svg'),
           exportFormat3D: validateStringEnum(params?.exportFormat3D, Object.keys(VALID_EXPORT_FORMATS_3D), s => 'stl'),
           extruderColors: validateArray(params?.extruderColors, validateString, () => undefined as any as []),
+          layerColors: validateLayerColors(params?.layerColors),
         },
         preview: preview ? {
           thumbhash: preview.thumbhash ? validateString(preview.thumbhash) : undefined,
@@ -101,7 +128,10 @@ export async function readStateFromFragment(): Promise<State | null> {
           collapsedCustomizerTabs: validateArray(view?.collapsedCustomizerTabs, validateString),
           color: validateString(view?.color, () => defaultModelColor),
           showAxes: validateBoolean(view?.layout?.showAxis, () => true),
-          lineNumbers: validateBoolean(view?.layout?.lineNumbers, () => false)
+          showDimensions: validateBoolean(view?.showDimensions, () => false),
+          lineNumbers: validateBoolean(view?.layout?.lineNumbers, () => false),
+          rightTab: validateStringEnum(view?.rightTab, ['customize', 'layerColors'], () => 'customize'),
+          editorDebounceMs: typeof view?.editorDebounceMs === 'number' ? view.editorDebounceMs : undefined,
         }
       };
     } catch (e) {

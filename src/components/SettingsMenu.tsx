@@ -8,10 +8,46 @@ import { ModelContext } from './contexts.ts';
 import { isInStandaloneMode } from '../utils.ts';
 import { confirmDialog } from 'primereact/confirmdialog';
 
+const DEBOUNCE_OPTIONS = [0, 200, 400, 800, 1500];
+
+function labelForDebounce(ms: number): string {
+  if (ms <= 0) return 'Editor debounce: off (click to cycle)';
+  return `Editor debounce: ${ms} ms (click to cycle)`;
+}
+
+const COLOR_SCHEME_OPTIONS = ['auto', 'light', 'dark'] as const;
+type ColorSchemeOption = typeof COLOR_SCHEME_OPTIONS[number];
+
+const COLOR_SCHEME_LABEL: Record<ColorSchemeOption, string> = {
+  auto: 'Color scheme: Auto (System) — click to cycle',
+  light: 'Color scheme: Light — click to cycle',
+  dark: 'Color scheme: Dark — click to cycle',
+};
+
+const COLOR_SCHEME_ICON: Record<ColorSchemeOption, string> = {
+  auto: 'pi pi-desktop',
+  light: 'pi pi-sun',
+  dark: 'pi pi-moon',
+};
+
 export default function SettingsMenu({className, style}: {className?: string, style?: CSSProperties}) {
   const model = useContext(ModelContext);
   if (!model) throw new Error('No model');
   const state = model.state;
+
+  const currentDebounce = state.view.editorDebounceMs ?? 400;
+  const cycleDebounce = () => {
+    const idx = DEBOUNCE_OPTIONS.indexOf(currentDebounce);
+    const next = DEBOUNCE_OPTIONS[(idx + 1) % DEBOUNCE_OPTIONS.length];
+    model.mutate(s => { s.view.editorDebounceMs = next; });
+  };
+
+  const currentColorScheme: ColorSchemeOption = state.view.colorScheme ?? 'auto';
+  const cycleColorScheme = () => {
+    const idx = COLOR_SCHEME_OPTIONS.indexOf(currentColorScheme);
+    const next = COLOR_SCHEME_OPTIONS[(idx + 1) % COLOR_SCHEME_OPTIONS.length];
+    model.mutate(s => { s.view.colorScheme = next; });
+  };
 
   const settingsMenu = useRef<Menu>(null);
   return (
@@ -27,7 +63,7 @@ export default function SettingsMenu({className, style}: {className?: string, st
         },
         {
           separator: true
-        },  
+        },
         {
           label: state.view.showAxes ? 'Hide axes' : 'Show axes',
           icon: 'pi pi-asterisk',
@@ -39,6 +75,16 @@ export default function SettingsMenu({className, style}: {className?: string, st
           icon: 'pi pi-list',
           // disabled: true,
           command: () => model.mutate(s => s.view.lineNumbers = !s.view.lineNumbers)
+        },
+        {
+          label: labelForDebounce(currentDebounce),
+          icon: 'pi pi-clock',
+          command: cycleDebounce,
+        },
+        {
+          label: COLOR_SCHEME_LABEL[currentColorScheme],
+          icon: COLOR_SCHEME_ICON[currentColorScheme],
+          command: cycleColorScheme,
         },
         ...(isInStandaloneMode() ? [
           {

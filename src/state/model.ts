@@ -11,7 +11,8 @@ import { ProcessStreams } from "../runner/openscad-runner.ts";
 import { is2DFormatExtension } from "./formats.ts";
 import { parseOff } from "../io/import_off.ts";
 import { exportGlb } from "../io/export_glb.ts";
-import { computeConnectedComponents } from "../io/components.ts";
+import { computeConnectedComponentsWithMapping } from "../io/components.ts";
+import { applyLayerColors } from "../io/recolor.ts";
 import { export3MF } from "../io/export_3mf.ts";
 import chroma from "chroma-js";
 import { reconcileVarsWithParameterSet } from './customizer-reconcile';
@@ -172,6 +173,53 @@ export class Model {
     })) {
       await this.processSource(/* isExternalReload= */ true);
     }
+  }
+
+  /**
+   * Re-applies layer-color overrides to the existing OFF output and regenerates the
+   * displayed GLB. Does NOT re-invoke OpenSCAD, so it's fast (sub-second for typical models).
+   * Call this after mutating `state.params.layerColors`.
+   */
+  async recolor(): Promise<void> {
+    const output = this.state.output;
+    if (!output?.outFile) return;
+    const name = output.outFile.name;
+    if (!name.endsWith('.off')) return; // 2D or non-OFF outputs: skip silently
+    try {
+      const offText = await output.outFile.text();
+      const off = parseOff(offText);
+      const mapping = computeConnectedComponentsWithMapping(off);
+      const layerColors = this.state.params.layerColors ?? [];
+      const colored = layerColors.length > 0
+        ? applyLayerColors(off, mapping.faceToComponent, layerColors)
+        : off;
+      const glbBlob = await exportGlb(colored);
+      const newDisplayFile = new File([glbBlob], name.replace('.off', '.glb'));
+      const newDisplayFileURL = await readFileAsDataURL(newDisplayFile);
+      this.mutate(s => {
+        if (!s.output) return;
+        if (s.output.displayFileURL?.startsWith('blob:')) {
+          URL.revokeObjectURL(s.output.displayFileURL);
+        }
+        s.output.displayFile = newDisplayFile;
+        s.output.displayFileURL = newDisplayFileURL;
+        s.output.componentBboxes = mapping.components.map(c => ({
+          min: c.min, max: c.max, center: c.center, size: c.size,
+        }));
+      });
+    } catch (err) {
+      console.error('Error during recolor:', err);
+    }
+  }
+
+  async setLayerColors(componentIdx: number, layers: Array<{from: number; color: string}>): Promise<void> {
+    this.mutate(s => {
+      const cfg = (s.params.layerColors ?? []).slice();
+      while (cfg.length <= componentIdx) cfg.push({ layers: [] });
+      cfg[componentIdx] = { layers: [...layers] };
+      s.params.layerColors = cfg;
+    });
+    await this.recolor();
   }
 
   private async processSource(isExternalReload: boolean = false) {
@@ -441,10 +489,15 @@ export class Model {
       }> | undefined;
       if (displayFile.name.endsWith('.off')) {
         const offData = parseOff(await displayFile.text());
-        componentBboxes = computeConnectedComponents(offData).map(c => ({
+        const mapping = computeConnectedComponentsWithMapping(offData);
+        componentBboxes = mapping.components.map(c => ({
           min: c.min, max: c.max, center: c.center, size: c.size,
         }));
-        displayFile = new File([await exportGlb(offData)], displayFile.name.replace('.off', '.glb'));
+        const layerColors = this.state.params.layerColors;
+        const colored = layerColors && layerColors.length > 0
+          ? applyLayerColors(offData, mapping.faceToComponent, layerColors)
+          : offData;
+        displayFile = new File([await exportGlb(colored)], displayFile.name.replace('.off', '.glb'));
       }
       const outFileURL = URL.createObjectURL(output.outFile);
       const displayFileURL = displayFile && await readFileAsDataURL(displayFile);
@@ -475,10 +528,6 @@ export class Model {
           componentBboxes,
         };
 
-        if (!isPreview) {
-          const audio = document.getElementById('complete-sound') as HTMLAudioElement;
-          audio?.play();
-        }
       });
     } catch (err) {
       this.mutate(s => {

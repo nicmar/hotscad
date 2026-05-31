@@ -101,16 +101,26 @@ export default function ViewerPanel({className, style}: {className?: string, sty
     };
   }, [modelUri]);
 
-  const fitToView = useCallback(() => {
+  const goHome = useCallback(() => {
     const el = modelViewerRef.current;
     if (!el) return;
     stashedCameraRef.current = null;
     try {
       el.cameraTarget = 'auto auto auto';
       el.cameraOrbit = '45deg 75deg 105%';
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
+  }, []);
+
+  const fitToView = useCallback(() => {
+    const el = modelViewerRef.current;
+    if (!el) return;
+    stashedCameraRef.current = null;
+    try {
+      // Preserve current orbit angle; just reframe radius+target.
+      const o = el.getCameraOrbit();
+      el.cameraTarget = 'auto auto auto';
+      el.cameraOrbit = `${o.theta}rad ${o.phi}rad 105%`;
+    } catch { /* ignore */ }
   }, []);
 
   // Per-object label projection: track screen positions of bounding-box centers,
@@ -226,7 +236,7 @@ export default function ViewerPanel({className, style}: {className?: string, sty
       >
         <span slot="progress-bar"></span>
       </model-viewer>
-      <ViewCube modelViewerRef={modelViewerRef} onHomeClick={fitToView} />
+      <ViewCube modelViewerRef={modelViewerRef} onHomeClick={goHome} onFitClick={fitToView} />
       {state.view.showDimensions && loaded && labelPositions.map((p, i) => (
         <div
           key={i}

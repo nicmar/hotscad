@@ -12,3 +12,77 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/*
+ * Color-scheme tokens. Components read these via var(...) so they automatically
+ * follow the active scheme (set by useApplyColorScheme on <html>).
+ * Defaults are light; overridden when data-color-scheme="dark".
+ */
+:root {
+  --surface-panel-bg: rgba(255, 255, 255, 0.5);
+  --surface-card-bg: rgba(255, 255, 255, 0.4);
+  --surface-row-bg: rgba(0, 0, 0, 0.025);
+  --surface-fg: #111;
+  --surface-fg-strong: #111;
+  --surface-fg-muted: #555;
+  --surface-fg-faint: #666;
+  --surface-border: #e5e7eb;
+  --surface-border-strong: #888;
+  --tab-inactive-bg: rgba(0, 0, 0, 0.04);
+  --tab-active-bg: #ffffff;
+  --tab-active-fg: #111;
+  --tab-inactive-fg: #555;
+  --tab-active-underline: #4f46e5;
+  --vc-face-bg: rgba(220, 220, 225, 0.95);
+  --vc-face-fg: #222;
+  --vc-btn-bg: rgba(255, 255, 255, 0.85);
+  --viewer-bg: transparent;
+  --editor-wash-bg: rgba(255, 255, 255, 0.5);
+  --fieldset-legend-bg: rgba(255, 255, 255, 0.4);
+}
+
+:root[data-color-scheme="dark"] {
+  --surface-panel-bg: rgba(30, 30, 30, 0.5);
+  --surface-card-bg: rgba(255, 255, 255, 0.04);
+  --surface-row-bg: rgba(255, 255, 255, 0.04);
+  --surface-fg: #e5e7eb;
+  --surface-fg-strong: #f5f5f5;
+  --surface-fg-muted: #b3b3b3;
+  --surface-fg-faint: #9a9a9a;
+  --surface-border: #2a2a2a;
+  --surface-border-strong: #555;
+  --tab-inactive-bg: rgba(255, 255, 255, 0.04);
+  --tab-active-bg: #1e1e1e;
+  --tab-active-fg: #f5f5f5;
+  --tab-inactive-fg: #b3b3b3;
+  --tab-active-underline: #818cf8;
+  --vc-face-bg: rgba(40, 40, 45, 0.9);
+  --vc-face-fg: #e5e7eb;
+  --vc-btn-bg: rgba(30, 30, 30, 0.85);
+  --viewer-bg: #1e1e1e;
+  --editor-wash-bg: rgba(30, 30, 30, 0.5);
+  --fieldset-legend-bg: rgba(0, 0, 0, 0.3);
+}
+
+.main-viewer {
+  background: var(--viewer-bg);
+}
+
+/* Override the hardcoded editor wash so it picks up the scheme. */
+.monaco-editor,
+.openscad-editor {
+  background-color: var(--editor-wash-bg) !important;
+}
+
+/* PrimeReact fieldset legend background follows the scheme. */
+.p-fieldset-legend {
+  background-color: var(--fieldset-legend-bg) !important;
+}
+
+/* PrimeReact menus need a darker surface in dark mode (theme override is sometimes lagged). */
+:root[data-color-scheme="dark"] .p-menu,
+:root[data-color-scheme="dark"] .p-menu .p-menuitem-link {
+  background-color: #1f1f23;
+  color: var(--surface-fg);
+}
+

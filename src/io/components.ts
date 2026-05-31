@@ -8,6 +8,102 @@ export type ComponentBox = {
   faceCount: number;
 };
 
+export type ComponentMapping = {
+  components: ComponentBox[];
+  // For each face index in off.faces, the index into components[] it belongs to (or -1 if filtered).
+  faceToComponent: Int32Array;
+};
+
+/**
+ * Same as computeConnectedComponents but also returns a per-face component index mapping.
+ */
+export function computeConnectedComponentsWithMapping(off: IndexedPolyhedron): ComponentMapping {
+  const n = off.vertices.length;
+  const parent = new Int32Array(n);
+  const rank = new Uint8Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+
+  const find = (x: number): number => {
+    let r = x;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[x] !== r) {
+      const next = parent[x];
+      parent[x] = r;
+      x = next;
+    }
+    return r;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a), rb = find(b);
+    if (ra === rb) return;
+    if (rank[ra] < rank[rb]) parent[ra] = rb;
+    else if (rank[ra] > rank[rb]) parent[rb] = ra;
+    else { parent[rb] = ra; rank[ra]++; }
+  };
+
+  for (const f of off.faces) {
+    const v0 = f.vertices[0];
+    union(v0, f.vertices[1]);
+    union(v0, f.vertices[2]);
+  }
+
+  const facesPerRoot = new Map<number, number>();
+  for (const f of off.faces) {
+    const r = find(f.vertices[0]);
+    facesPerRoot.set(r, (facesPerRoot.get(r) ?? 0) + 1);
+  }
+
+  const boxByRoot = new Map<number, {
+    minX: number, minY: number, minZ: number,
+    maxX: number, maxY: number, maxZ: number,
+  }>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    const { x, y, z } = off.vertices[i];
+    let b = boxByRoot.get(r);
+    if (!b) {
+      b = { minX: x, minY: y, minZ: z, maxX: x, maxY: y, maxZ: z };
+      boxByRoot.set(r, b);
+    } else {
+      if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x;
+      if (y < b.minY) b.minY = y; if (y > b.maxY) b.maxY = y;
+      if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z;
+    }
+  }
+
+  // Build the component list, keeping only those with >= 4 faces.
+  const rootToCompIdx = new Map<number, number>();
+  const intermediate: Array<{ root: number; box: ComponentBox }> = [];
+  for (const [root, b] of boxByRoot) {
+    const faceCount = facesPerRoot.get(root) ?? 0;
+    if (faceCount < 4) continue;
+    intermediate.push({
+      root,
+      box: {
+        min: [b.minX, b.minY, b.minZ],
+        max: [b.maxX, b.maxY, b.maxZ],
+        center: [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2],
+        size: [b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ],
+        faceCount,
+      },
+    });
+  }
+  // Sort by volume descending — produces the same ordering as the old function.
+  intermediate.sort((a, b) => (b.box.size[0] * b.box.size[1] * b.box.size[2]) - (a.box.size[0] * a.box.size[1] * a.box.size[2]));
+  for (let i = 0; i < intermediate.length; i++) {
+    rootToCompIdx.set(intermediate[i].root, i);
+  }
+
+  const components = intermediate.map(x => x.box);
+  const faceToComponent = new Int32Array(off.faces.length);
+  for (let i = 0; i < off.faces.length; i++) {
+    const r = find(off.faces[i].vertices[0]);
+    const ci = rootToCompIdx.get(r);
+    faceToComponent[i] = ci !== undefined ? ci : -1;
+  }
+  return { components, faceToComponent };
+}
+
 /**
  * Splits a polyhedron mesh into connected components by walking face-vertex adjacency
  * with union-find, then computes an axis-aligned bounding box per component.

@@ -1,6 +1,6 @@
 // Portions of this file are Copyright 2021 Google LLC, and licensed under GPL2+. See COPYING.
 
-import React, { CSSProperties, useContext, useRef, useState } from 'react';
+import React, { CSSProperties, useContext, useEffect, useRef, useState } from 'react';
 import Editor, { loader, Monaco } from '@monaco-editor/react';
 import openscadEditorOptions from '../language/openscad-editor-options.ts';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
@@ -13,6 +13,7 @@ import { getBlankProjectState, defaultSourcePath } from '../state/initial-state.
 import { ModelContext, FSContext } from './contexts.ts';
 import FilePicker, {  } from './FilePicker.tsx';
 import { LocalFileButton } from './LocalFileButton';
+import { useResolvedColorScheme } from './useResolvedColorScheme';
 
 // const isMonacoSupported = false;
 const isMonacoSupported = (() => {
@@ -36,7 +37,72 @@ export default function EditorPanel({className, style}: {className?: string, sty
 
   const state = model.state;
 
+  const resolvedColorScheme = useResolvedColorScheme(state.view.colorScheme);
+
   const [editor, setEditor] = useState(null as monaco.editor.IStandaloneCodeEditor | null)
+
+  // Debounced source updates. While the user is typing we keep a local "draft"
+  // string so Monaco's `value` prop doesn't revert (model.source updates are
+  // delayed). When the debounce timer fires we push to model.source and clear
+  // the draft so further renders flow from model state again.
+  const debounceMs = state.view.editorDebounceMs ?? 400;
+  const [draft, setDraft] = useState<string | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
+  const lastDraftRef = useRef<string>('');
+
+  // Drop any pending draft when the user switches files.
+  useEffect(() => {
+    if (debounceTimerRef.current != null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setDraft(null);
+  }, [state.params.activePath]);
+
+  // Flush any pending edit on unmount.
+  useEffect(() => () => {
+    if (debounceTimerRef.current != null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+      if (lastDraftRef.current && lastDraftRef.current !== model.source) {
+        model.source = lastDraftRef.current;
+      }
+    }
+  }, []);
+
+  const editorValue = draft !== null ? draft : model.source;
+
+  const flushDraft = () => {
+    if (debounceTimerRef.current != null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    const s = lastDraftRef.current;
+    if (s !== undefined && s !== model.source) {
+      model.source = s;
+    }
+    setDraft(null);
+  };
+
+  const onSourceChange = (next: string) => {
+    lastDraftRef.current = next;
+    if (debounceMs <= 0) {
+      model.source = next;
+      setDraft(null);
+      return;
+    }
+    setDraft(next);
+    if (debounceTimerRef.current != null) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      if (lastDraftRef.current !== model.source) {
+        model.source = lastDraftRef.current;
+      }
+      setDraft(null);
+    }, debounceMs);
+  };
 
   if (editor) {
     const checkerRun = state.lastCheckerRun;
@@ -63,7 +129,9 @@ export default function EditorPanel({className, style}: {className?: string, sty
       id: "openscad-save-do-nothing",
       label: "Save (disabled)",
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
-      run: () => {}
+      // Treat Ctrl/Cmd+S as "flush pending edit immediately" — handy when
+      // the debounce is set high.
+      run: () => flushDraft()
     });
     editor.addAction({
       id: "openscad-save-project",
@@ -172,9 +240,10 @@ export default function EditorPanel({className, style}: {className?: string, sty
             className="openscad-editor absolute-fill"
             defaultLanguage="openscad"
             path={state.params.activePath}
-            value={model.source}
-            onChange={s => model.source = s ?? ''}
-            onMount={onMount} // TODO: This looks a bit silly, does it trigger a re-render??
+            value={editorValue}
+            onChange={s => onSourceChange(s ?? '')}
+            onMount={onMount}
+            theme={resolvedColorScheme === 'dark' ? 'vs-dark' : 'vs'}
             options={{
               ...openscadEditorOptions,
               fontSize: 16,
@@ -183,10 +252,10 @@ export default function EditorPanel({className, style}: {className?: string, sty
           />
         )}
         {!isMonacoSupported && (
-          <InputTextarea 
+          <InputTextarea
             className="openscad-editor absolute-fill"
-            value={model.source}
-            onChange={s => model.source = s.target.value ?? ''}  
+            value={editorValue}
+            onChange={s => onSourceChange(s.target.value ?? '')}
           />
         )}
       </div>

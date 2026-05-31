@@ -24,6 +24,9 @@ export interface FileOutput {
   formattedOutFileSize: string,
 }
 
+export type LayerSpan = { from: number; color: string };
+export type LayerColorsConfig = Array<{ layers: LayerSpan[] }>;
+
 export interface State {
   params: {
     activePath: string,
@@ -34,6 +37,7 @@ export interface State {
     exportFormat3D: keyof typeof VALID_EXPORT_FORMATS_3D,
     extruderColors?: string[],
     watchedLocalFile?: { name: string; lastModified: number },
+    layerColors?: LayerColorsConfig,
   },
 
   
@@ -58,6 +62,9 @@ export interface State {
     showAxes?: boolean,
     showDimensions?: boolean,
     lineNumbers?: boolean,
+    rightTab?: 'customize' | 'layerColors',
+    editorDebounceMs?: number,
+    colorScheme?: 'light' | 'dark' | 'auto',
   }
 
   currentRunLogs?: ['stderr'|'stdout', string][],

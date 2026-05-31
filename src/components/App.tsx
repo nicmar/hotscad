@@ -9,15 +9,19 @@ import Footer from './Footer';
 import { ModelContext, FSContext } from './contexts';
 import PanelSwitcher from './PanelSwitcher';
 import { ConfirmDialog } from 'primereact/confirmdialog';
-import CustomizerPanel from './CustomizerPanel';
+import RightPanel from './RightPanel';
 import { Splitter, SplitterPanel } from 'primereact/splitter';
+import { useResolvedColorScheme, useApplyColorScheme } from './useResolvedColorScheme';
 
 
 export function App({initialState, statePersister, fs}: {initialState: State, statePersister: StatePersister, fs: FS}) {
   const [state, setState] = useState(initialState);
-  
+
   const model = new Model(fs, state, setState, statePersister);
   useEffect(() => model.init());
+
+  const resolvedColorScheme = useResolvedColorScheme(state.view.colorScheme);
+  useApplyColorScheme(resolvedColorScheme);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -94,7 +98,7 @@ export function App({initialState, statePersister, fs}: {initialState: State, st
               const renderPanel = (id: MultiLayoutComponentId) => {
                 if (id === 'editor') return <EditorPanel className="opacity-animated" style={{flex: 1, width: '100%', height: '100%'}} />;
                 if (id === 'viewer') return <ViewerPanel style={{flex: 1, width: '100%', height: '100%'}} />;
-                return <CustomizerPanel className="opacity-animated" style={{flex: 1, width: '100%', height: '100%'}} />;
+                return <RightPanel className="opacity-animated" style={{flex: 1, width: '100%', height: '100%'}} />;
               };
               return (
                 <Splitter style={{flex: 1, border: 'none'}} gutterSize={6}>
@@ -118,7 +122,7 @@ export function App({initialState, statePersister, fs}: {initialState: State, st
                 absolute-fill
               `} style={getPanelStyle('editor')} />
               <ViewerPanel className={`absolute-fill`} style={getPanelStyle('viewer')} />
-              <CustomizerPanel className={`
+              <RightPanel className={`
                 opacity-animated
                 ${layout.focus !== 'customizer' ? 'opacity-0' : ''}
                 absolute-fill

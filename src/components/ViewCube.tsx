@@ -35,9 +35,11 @@ const FACE_LABEL: Record<FaceId, string> = {
 export function ViewCube({
   modelViewerRef,
   onHomeClick,
+  onFitClick,
 }: {
   modelViewerRef: React.MutableRefObject<ModelViewerEl | undefined>;
   onHomeClick: () => void;
+  onFitClick: () => void;
 }) {
   const [orbit, setOrbit] = useState<{theta: number; phi: number}>({theta: Math.PI / 4, phi: Math.PI / 4});
   const lastClickRef = useRef<{face: FaceId; time: number} | null>(null);
@@ -108,6 +110,56 @@ export function ViewCube({
     }
   }, [setCameraToFace, toggleOrtho]);
 
+  // Drag-to-rotate. Sets cameraOrbit on the main viewer; the cube re-renders via
+  // the camera-change listener.
+  const dragRef = useRef<{x: number; y: number; pointerId: number} | null>(null);
+  const dragMovedRef = useRef<boolean>(false);
+
+  const onPointerDownCube = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return; // LMB only
+    const el = modelViewerRef.current;
+    if (!el) return;
+    dragRef.current = {x: e.clientX, y: e.clientY, pointerId: e.pointerId};
+    dragMovedRef.current = false;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onPointerMoveCube = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) dragMovedRef.current = true;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    const el = modelViewerRef.current;
+    if (!el) return;
+    try {
+      const o = el.getCameraOrbit();
+      const sens = 0.012;
+      const newTheta = o.theta - dx * sens;
+      let newPhi = o.phi - dy * sens;
+      newPhi = Math.max(0.01, Math.min(Math.PI - 0.01, newPhi));
+      el.cameraOrbit = `${newTheta}rad ${newPhi}rad ${o.radius}m`;
+    } catch { /* ignore */ }
+  }, []);
+
+  const onPointerUpCube = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    dragRef.current = null;
+  }, []);
+
+  // Clicks on faces should fire ONLY if drag didn't move (otherwise drag-release would also snap).
+  const handleFaceClickWithDragGuard = useCallback((face: FaceId) => {
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false;
+      return;
+    }
+    handleFaceClick(face);
+  }, [handleFaceClick]);
+
   // The cube needs to show what the camera sees. The camera orbits the model;
   // the cube must rotate so its currently-visible face matches the camera's direction.
   // In model-viewer convention (Y-up, theta = azimuth, phi = polar from +Y):
@@ -120,9 +172,9 @@ export function ViewCube({
     position: 'absolute',
     left: 0, top: 0,
     width: '60px', height: '60px',
-    background: 'rgba(220,220,225,0.95)',
-    border: '1px solid #888',
-    color: '#222',
+    background: 'var(--vc-face-bg)',
+    border: '1px solid var(--surface-border-strong)',
+    color: 'var(--vc-face-fg)',
     font: '600 11px/60px Helvetica, Arial, sans-serif',
     textAlign: 'center',
     userSelect: 'none',
@@ -144,16 +196,17 @@ export function ViewCube({
         pointerEvents: 'none',
       }}
     >
-      {/* Home / fit-to-view */}
+      {/* Home (top-left) - reset to default isometric */}
       <button
-        title="Fit to view"
+        title="Home view"
         onClick={onHomeClick}
         style={{
           position: 'absolute',
           top: 0, left: 0,
           width: '22px', height: '22px',
-          background: 'rgba(255,255,255,0.85)',
-          border: '1px solid #888',
+          background: 'var(--vc-btn-bg)',
+          border: '1px solid var(--surface-border-strong)',
+          color: 'var(--vc-face-fg)',
           borderRadius: '3px',
           cursor: 'pointer',
           padding: 0,
@@ -162,6 +215,27 @@ export function ViewCube({
         }}
       >
         <i className="pi pi-home" style={{fontSize: '12px'}} />
+      </button>
+
+      {/* Fit-to-view (top-right) - keep current angle, frame the model */}
+      <button
+        title="Fit to view"
+        onClick={onFitClick}
+        style={{
+          position: 'absolute',
+          top: 0, right: 0,
+          width: '22px', height: '22px',
+          background: 'var(--vc-btn-bg)',
+          border: '1px solid var(--surface-border-strong)',
+          color: 'var(--vc-face-fg)',
+          borderRadius: '3px',
+          cursor: 'pointer',
+          padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'auto',
+        }}
+      >
+        <i className="pi pi-arrows-alt" style={{fontSize: '12px'}} />
       </button>
 
       {/* The cube */}
@@ -174,7 +248,12 @@ export function ViewCube({
           height: '60px',
           perspective: '300px',
           pointerEvents: 'auto',
+          cursor: 'grab',
         }}
+        onPointerDown={onPointerDownCube}
+        onPointerMove={onPointerMoveCube}
+        onPointerUp={onPointerUpCube}
+        onPointerCancel={onPointerUpCube}
       >
         <div
           style={{
@@ -183,16 +262,16 @@ export function ViewCube({
             height: '60px',
             transformStyle: 'preserve-3d',
             transform: `rotateX(${rx}deg) rotateY(${ry}deg)`,
-            transition: 'transform 0.18s ease-out',
+            transition: dragRef.current ? 'none' : 'transform 0.18s ease-out',
           }}
         >
           {/* Each face is positioned and rotated to its cube position. 30px = half-side. */}
-          <div onClick={() => handleFaceClick('front')}  style={{...faceStyle, transform: 'translateZ(30px)'}}>{FACE_LABEL.front}</div>
-          <div onClick={() => handleFaceClick('back')}   style={{...faceStyle, transform: 'rotateY(180deg) translateZ(30px)'}}>{FACE_LABEL.back}</div>
-          <div onClick={() => handleFaceClick('right')}  style={{...faceStyle, transform: 'rotateY(90deg) translateZ(30px)'}}>{FACE_LABEL.right}</div>
-          <div onClick={() => handleFaceClick('left')}   style={{...faceStyle, transform: 'rotateY(-90deg) translateZ(30px)'}}>{FACE_LABEL.left}</div>
-          <div onClick={() => handleFaceClick('top')}    style={{...faceStyle, transform: 'rotateX(90deg) translateZ(30px)'}}>{FACE_LABEL.top}</div>
-          <div onClick={() => handleFaceClick('bottom')} style={{...faceStyle, transform: 'rotateX(-90deg) translateZ(30px)'}}>{FACE_LABEL.bottom}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('front')}  style={{...faceStyle, transform: 'translateZ(30px)'}}>{FACE_LABEL.front}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('back')}   style={{...faceStyle, transform: 'rotateY(180deg) translateZ(30px)'}}>{FACE_LABEL.back}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('right')}  style={{...faceStyle, transform: 'rotateY(90deg) translateZ(30px)'}}>{FACE_LABEL.right}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('left')}   style={{...faceStyle, transform: 'rotateY(-90deg) translateZ(30px)'}}>{FACE_LABEL.left}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('top')}    style={{...faceStyle, transform: 'rotateX(90deg) translateZ(30px)'}}>{FACE_LABEL.top}</div>
+          <div onClick={() => handleFaceClickWithDragGuard('bottom')} style={{...faceStyle, transform: 'rotateX(-90deg) translateZ(30px)'}}>{FACE_LABEL.bottom}</div>
         </div>
       </div>
 

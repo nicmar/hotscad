@@ -15,16 +15,20 @@ import { isInStandaloneMode, registerCustomAppHeightCSSProperty } from './utils.
 import { State, StatePersister } from './state/app-state.ts';
 import { writeStateInFragment } from "./state/fragment-state.ts";
 
-import PrimeReact from "primereact/api";
-import "primereact/resources/themes/lara-light-indigo/theme.css";
+import { PrimeReactProvider } from "primereact/api";
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";
 import "primeflex/primeflex.min.css";
 
-// Initialize PrimeReact global config to prevent "Cannot read properties of undefined
-// (reading 'hideOverlaysOnDocumentScrolling')" when overlay components close.
-PrimeReact.hideOverlaysOnDocumentScrolling = false;
-PrimeReact.ripple = false;
+// PrimeReact 10.x reads config from PrimeReactContext (the deprecated default
+// `PrimeReact` global is no longer consulted by overlay listeners). Without a
+// provider, overlay event handlers see an undefined context and crash with
+// "Cannot read properties of undefined (reading 'hideOverlaysOnDocumentScrolling')"
+// when an overlay closes due to an outside click or scroll.
+const primeReactConfig = {
+  hideOverlaysOnDocumentScrolling: false,
+  ripple: false,
+};
 
 const log = debug('app:log');
 
@@ -102,7 +106,9 @@ window.addEventListener('load', async () => {
   );
   root.render(
     <React.StrictMode>
-      <App initialState={initialState} statePersister={statePersister} fs={fs} />
+      <PrimeReactProvider value={primeReactConfig}>
+        <App initialState={initialState} statePersister={statePersister} fs={fs} />
+      </PrimeReactProvider>
     </React.StrictMode>
   );
 });
