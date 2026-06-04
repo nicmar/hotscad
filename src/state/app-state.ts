@@ -65,7 +65,19 @@ export interface State {
     rightTab?: 'customize' | 'layerColors',
     editorDebounceMs?: number,
     colorScheme?: 'light' | 'dark' | 'auto',
+    // 'pan' (default): LMB pans, RMB rotates. 'rotate': swapped.
+    primaryMouseButton?: 'pan' | 'rotate',
+    // WASD pans the target while the rotate mouse button is held; Q/E moves
+    // the target up/down in world Y.
+    wasdNav?: boolean,
+    // Customizer filter: when true, hide parameters whose value matches the
+    // source default; only show ones the user has changed.
+    showOnlyOverridden?: boolean,
   }
+
+  // Transient (deliberately outside `view`/`params` so the persister never
+  // sees it): Quick Start only opens when the user picks it from the help menu.
+  quickStartOpen?: boolean,
 
   currentRunLogs?: ['stderr'|'stdout', string][],
 
@@ -89,6 +101,11 @@ export interface State {
       center: [number, number, number],
       size: [number, number, number],
     }>,
+    // OpenSCAD ran successfully but produced no geometry (logged
+    // "Current top level object is empty."). The viewer keeps showing the
+    // previous render's GLB, which can look like the re-render didn't happen
+    // — surface a warning so the user knows.
+    isEmpty?: boolean,
   },
   export?: FileOutput,
 };

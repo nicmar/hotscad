@@ -22,26 +22,31 @@ export function LocalFileButton() {
     );
   }
 
+  const dotColor = status.outOfSync ? '#ef4444'   // red — stale
+                 : status.isWatching ? '#22c55e'  // green — watching, in sync
+                 : '#f59e0b';                     // amber — manual mode
+
+  const dotTitle = status.outOfSync
+    ? 'Editor differs from disk — click reload to pull the latest file content'
+    : status.isWatching ? 'Watching for external changes'
+    : 'Manual reload required';
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
       <span
-        title={status.isWatching ? 'Watching for external changes' : 'Manual reload required'}
-        style={{
-          width: 8, height: 8, borderRadius: 4,
-          background: status.isWatching ? '#22c55e' : '#f59e0b',
-        }}
+        title={dotTitle}
+        style={{ width: 8, height: 8, borderRadius: 4, background: dotColor }}
       />
       <span style={{ fontSize: 12, opacity: 0.8 }}>{status.fileName}</span>
-      {!status.isWatching && (
-        <Button
-          icon="pi pi-refresh"
-          size="small"
-          className="p-button-text"
-          tooltip="Reload from disk"
-          tooltipOptions={{ position: 'bottom' }}
-          onClick={manualReload}
-        />
-      )}
+      <Button
+        icon="pi pi-refresh"
+        size="small"
+        className="p-button-text"
+        severity={status.outOfSync ? 'danger' : undefined}
+        tooltip={status.outOfSync ? 'Pull latest content from disk' : 'Reload from disk'}
+        tooltipOptions={{ position: 'bottom' }}
+        onClick={manualReload}
+      />
       <Button
         icon="pi pi-times"
         size="small"

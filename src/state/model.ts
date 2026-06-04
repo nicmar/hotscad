@@ -501,6 +501,12 @@ export class Model {
       }
       const outFileURL = URL.createObjectURL(output.outFile);
       const displayFileURL = displayFile && await readFileAsDataURL(displayFile);
+      // OpenSCAD prints "Current top level object is empty." when the source
+      // evaluates without errors but yields no geometry (e.g. an `if` that's
+      // false, or every child of a `difference()` removed). The model-viewer
+      // can keep showing the previous GLB; capturing the flag lets the UI
+      // explain why nothing visibly updated.
+      const isEmpty = output.logText?.includes('Current top level object is empty.') ?? false;
       this.mutate(s => {
         setRendering(s, false);
         s.error = undefined;
@@ -526,15 +532,34 @@ export class Model {
           formattedElapsedMillis: formatMillis(output.elapsedMillis),
           formattedOutFileSize: formatBytes(output.outFile.size),
           componentBboxes,
+          isEmpty,
         };
 
       });
     } catch (err) {
-      this.mutate(s => {
-        setRendering(s, false);
-        console.error('Error while doing ' + (isPreview ? 'preview' : 'rendering') + ':', err)
-        s.error = `${err}`;
-      });
+      // OpenSCAD writes no output file when the top-level evaluates to nothing
+      // (e.g. an `if` skipped all geometry, or a parameter zeroed out a part).
+      // The worker surfaces that as "Failed to read output file ...". Treat it
+      // as a non-fatal "empty render": keep the previous output on screen and
+      // surface the same isEmpty warning we use when OpenSCAD itself logs
+      // "Current top level object is empty.".
+      const msg = String((err as any)?.message ?? err);
+      const isEmptyResult =
+        msg.includes('Failed to read output file') ||
+        msg.includes('Current top level object is empty.');
+      if (isEmptyResult) {
+        this.mutate(s => {
+          setRendering(s, false);
+          s.error = undefined;
+          if (s.output) s.output.isEmpty = true;
+        });
+      } else {
+        this.mutate(s => {
+          setRendering(s, false);
+          console.error('Error while doing ' + (isPreview ? 'preview' : 'rendering') + ':', err)
+          s.error = `${err}`;
+        });
+      }
     }
     if (retryInOtherDim) {
       let is2D: boolean | undefined;

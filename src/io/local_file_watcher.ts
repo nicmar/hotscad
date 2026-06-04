@@ -47,6 +47,10 @@ export type LocalFileSession = {
   fileName: string;
   isWatching: boolean;
   read(): Promise<string>;
+  /** Re-read from disk unconditionally and notify subscribers. */
+  forceReread(): Promise<string | null>;
+  /** Most recent content seen on disk (null until first successful read). */
+  lastContent(): string | null;
   onChange(cb: (content: string) => void): () => void;
   stop(): void;
 };
@@ -55,19 +59,23 @@ export const hasFileSystemAccess = (): boolean =>
   typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 
 async function makeWatchingSession(handle: any): Promise<LocalFileSession> {
-  let lastModified = -1;
+  // Content-based comparison rather than lastModified: some filesystems and
+  // editors produce identical mtimes for back-to-back writes, which let
+  // changes slip through the old timestamp gate.
+  let lastText: string | null = null;
   let stopped = false;
   const callbacks = new Set<(c: string) => void>();
   let polling = false;
 
   async function readOnce(): Promise<string> {
     const file = await handle.getFile();
-    lastModified = file.lastModified;
-    return await file.text();
+    const text = await file.text();
+    lastText = text;
+    return text;
   }
 
   const initial = await handle.getFile();
-  lastModified = initial.lastModified;
+  lastText = await initial.text();
   const fileName = initial.name;
 
   const intervalId = setInterval(async () => {
@@ -75,9 +83,9 @@ async function makeWatchingSession(handle: any): Promise<LocalFileSession> {
     polling = true;
     try {
       const file = await handle.getFile();
-      if (file.lastModified !== lastModified) {
-        lastModified = file.lastModified;
-        const text = await file.text();
+      const text = await file.text();
+      if (text !== lastText) {
+        lastText = text;
         callbacks.forEach(cb => cb(text));
       }
     } catch (e) {
@@ -87,10 +95,25 @@ async function makeWatchingSession(handle: any): Promise<LocalFileSession> {
     }
   }, 500);
 
+  async function forceReread(): Promise<string | null> {
+    try {
+      const file = await handle.getFile();
+      const text = await file.text();
+      lastText = text;
+      callbacks.forEach(cb => cb(text));
+      return text;
+    } catch (e) {
+      console.warn('forceReread failed:', e);
+      return null;
+    }
+  }
+
   return {
     fileName,
     isWatching: true,
     read: readOnce,
+    forceReread,
+    lastContent: () => lastText,
     onChange(cb) { callbacks.add(cb); return () => callbacks.delete(cb); },
     stop() { stopped = true; clearInterval(intervalId); callbacks.clear(); },
   };
@@ -99,6 +122,7 @@ async function makeWatchingSession(handle: any): Promise<LocalFileSession> {
 function makeManualSession(file: File): LocalFileSession {
   let cached: string | null = null;
   let cachedFor: File = file;
+  const callbacks = new Set<(c: string) => void>();
 
   return {
     fileName: file.name,
@@ -109,8 +133,15 @@ function makeManualSession(file: File): LocalFileSession {
       cachedFor = file;
       return cached;
     },
-    onChange() { return () => {}; },
-    stop() {},
+    async forceReread() {
+      cached = await file.text();
+      cachedFor = file;
+      callbacks.forEach(cb => cb(cached!));
+      return cached;
+    },
+    lastContent: () => cached,
+    onChange(cb) { callbacks.add(cb); return () => callbacks.delete(cb); },
+    stop() { callbacks.clear(); },
   };
 }
 

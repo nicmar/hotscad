@@ -1,6 +1,6 @@
 // Portions of this file are Copyright 2021 Google LLC, and licensed under GPL2+. See COPYING.
 
-import React, { CSSProperties, useContext, useMemo } from 'react';
+import React, { CSSProperties, useContext, useEffect, useMemo, useState } from 'react';
 import { ModelContext } from './contexts.ts';
 
 import { Dropdown } from 'primereact/dropdown';
@@ -9,10 +9,39 @@ import { Checkbox } from 'primereact/checkbox';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { Fieldset } from 'primereact/fieldset';
-import { Parameter } from '../state/customizer-types.ts';
+import { Parameter, ParameterOption } from '../state/customizer-types.ts';
 import { Button } from 'primereact/button';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 const SECTION_RE = /^\s*-{3,}\s*([A-Za-z][A-Za-z0-9 /&\-]*?)\s*-{3,}\s*$/;
+
+// Fonts shipped in public/libraries/fonts.zip (see libs-config.json `fonts`).
+// Each entry maps a friendly display name to the exact OpenSCAD font string.
+const BUNDLED_FONTS: ParameterOption[] = [
+  { name: 'Inter Black',                  value: 'Inter:style=Black' },
+  { name: 'Inter SemiBold',               value: 'Inter:style=SemiBold' },
+  { name: 'Liberation Sans',              value: 'Liberation Sans' },
+  { name: 'Liberation Sans Bold',         value: 'Liberation Sans:style=Bold' },
+  { name: 'Liberation Sans Italic',       value: 'Liberation Sans:style=Italic' },
+  { name: 'Liberation Sans Bold Italic',  value: 'Liberation Sans:style=Bold Italic' },
+  { name: 'Liberation Serif',             value: 'Liberation Serif' },
+  { name: 'Liberation Serif Bold',        value: 'Liberation Serif:style=Bold' },
+  { name: 'Liberation Serif Italic',      value: 'Liberation Serif:style=Italic' },
+  { name: 'Liberation Serif Bold Italic', value: 'Liberation Serif:style=Bold Italic' },
+  { name: 'Liberation Mono',              value: 'Liberation Mono' },
+  { name: 'Liberation Mono Bold',         value: 'Liberation Mono:style=Bold' },
+  { name: 'Liberation Mono Italic',       value: 'Liberation Mono:style=Italic' },
+  { name: 'Liberation Mono Bold Italic',  value: 'Liberation Mono:style=Bold Italic' },
+  { name: 'Noto Sans',                    value: 'Noto Sans' },
+  { name: 'Noto Sans Bold',               value: 'Noto Sans:style=Bold' },
+  { name: 'Noto Sans Italic',             value: 'Noto Sans:style=Italic' },
+];
+
+const FONT_PARAM_RE = /(^|_)font(_name)?$/i;
+
+export function isFontParam(name: string): boolean {
+  return FONT_PARAM_RE.test(name);
+}
 
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
@@ -224,8 +253,101 @@ export default function CustomizerPanel({className, style}: {className?: string,
     model.setVar(name, value);
   };
 
-  const groups = useMemo(() => regroupBySectionMarkers(state.parameterSet?.parameters ?? []),
-                          [state.parameterSet]);
+  // Shift-held → fine-grained 0.1 step on number inputs (spinner buttons +
+  // arrow keys). Reading window keydown so the modifier applies even before
+  // the user has focused an input.
+  const [shiftHeld, setShiftHeld] = useState(false);
+  useEffect(() => {
+    const kd = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(true); };
+    const ku = (e: KeyboardEvent) => { if (e.key === 'Shift') setShiftHeld(false); };
+    const blur = () => setShiftHeld(false);
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', kd);
+      window.removeEventListener('keyup', ku);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+
+  const groups = useMemo(
+    () => regroupBySectionMarkers(state.parameterSet?.parameters ?? []),
+    [state.parameterSet],
+  );
+
+  // Names of params whose current value differs from the source-declared
+  // initial. `state.params.vars` may contain entries that equal the initial
+  // (e.g. after a per-param "revert to source"), so key presence isn't enough.
+  const overriddenNames = useMemo(() => {
+    const out = new Set<string>();
+    const vars = state.params.vars ?? {};
+    for (const p of state.parameterSet?.parameters ?? []) {
+      if (!(p.name in vars)) continue;
+      if (JSON.stringify(vars[p.name]) !== JSON.stringify(p.initial)) out.add(p.name);
+    }
+    return out;
+  }, [state.parameterSet, state.params.vars]);
+  const overrideCount = overriddenNames.size;
+
+  const showOnlyOverridden = !!state.view.showOnlyOverridden;
+
+  // If the user toggled "Show customized" on, then reverted everything, the
+  // panel would otherwise sit empty until they noticed and unchecked it. Auto-
+  // clear in that case so they don't get stuck staring at a blank panel.
+  useEffect(() => {
+    if (showOnlyOverridden && overrideCount === 0) {
+      model.mutate(s => { s.view.showOnlyOverridden = false; });
+    }
+  }, [showOnlyOverridden, overrideCount, model]);
+
+  // Quick text filter on parameter name. Lives in component state (not in
+  // model.view) because it's transient and per-mount: a search you type while
+  // hunting for a knob shouldn't persist across reloads or follow you into the
+  // URL fragment.
+  const [filter, setFilter] = useState('');
+  const filterTerm = filter.trim().toLowerCase();
+  const filterActive = filterTerm.length > 0;
+
+  // When the filter matches anything, we drop group headings entirely and
+  // render a flat list — group names rarely line up with what the user is
+  // typing, so showing them is noise. `flatFilteredParams` is null when no
+  // filter is in effect (UI falls back to the grouped layout).
+  const flatFilteredParams = useMemo(() => {
+    if (!filterActive) return null;
+    const out: Parameter[] = [];
+    for (const g of groups) {
+      for (const p of g.params) {
+        if (!p.name.toLowerCase().includes(filterTerm)) continue;
+        if (showOnlyOverridden && !overriddenNames.has(p.name)) continue;
+        out.push(p);
+      }
+    }
+    return out;
+  }, [filterActive, filterTerm, groups, showOnlyOverridden, overriddenNames]);
+
+  const visibleGroups = useMemo(() => {
+    if (!showOnlyOverridden) return groups;
+    return groups
+      .map(g => ({ group: g.group, params: g.params.filter(p => overriddenNames.has(p.name)) }))
+      .filter(g => g.params.length > 0);
+  }, [groups, showOnlyOverridden, overriddenNames]);
+
+  const revertAll = () => {
+    if (overrideCount === 0) return;
+    confirmDialog({
+      message: `Revert ${overrideCount} customized value${overrideCount === 1 ? '' : 's'} to the defaults from the source?`,
+      header: 'Revert all values',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Revert all',
+      rejectLabel: 'Cancel',
+      accept: () => {
+        model.mutate(s => { s.params.vars = {}; });
+        model.render({isPreview: true, now: false});
+      },
+    });
+  };
+
   const collapsedTabSet = new Set(state.view.collapsedCustomizerTabs ?? []);
   const setTabOpen = (name: string, open: boolean) => {
     if (open) {
@@ -247,33 +369,155 @@ export default function CustomizerPanel({className, style}: {className?: string,
           ...style,
           bottom: 'unset',
         }}>
-      <BatteriesEditor />
-      {groups.map(({group, params}) => (
-        <Fieldset
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px 0 10px',
+      }}>
+        <label
+          title="Hide parameters whose value matches the source default"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 12, color: 'var(--surface-fg-muted)',
+            cursor: overrideCount === 0 ? 'not-allowed' : 'pointer',
+            opacity: overrideCount === 0 ? 0.5 : 1,
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+          }}>
+          <Checkbox
+            inputId="show-only-customized"
+            checked={showOnlyOverridden}
+            disabled={overrideCount === 0}
+            onChange={(e) => model.mutate(s => { s.view.showOnlyOverridden = !!e.checked; })}
+          />
+          Show customized
+          {overrideCount > 0 && (
+            <span style={{
+              fontSize: 11, color: 'var(--surface-fg-faint)',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              ({overrideCount})
+            </span>
+          )}
+        </label>
+        <div style={{
+          position: 'relative',
+          flex: '1 1 160px',
+          minWidth: 140,
+        }}>
+          <i
+            className="pi pi-search"
             style={{
-              margin: '5px 10px 5px 10px',
-              backgroundColor: 'var(--surface-card-bg)',
+              position: 'absolute',
+              left: 10, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 12, color: 'var(--surface-fg-faint)',
+              pointerEvents: 'none',
             }}
-            onCollapse={() => setTabOpen(group, false)}
-            onExpand={() => setTabOpen(group, true)}
-            collapsed={collapsedTabSet.has(group)}
-            key={group}
-            legend={group}
-            toggleable={true}>
-          {params.map((param) => (
-            <ParameterInput
-              key={param.name}
-              value={(state.params.vars ?? {})[param.name]}
-              param={param}
-              handleChange={handleChange} />
-          ))}
-        </Fieldset>
-      ))}
+          />
+          <InputText
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter parameters"
+            style={{
+              width: '100%',
+              paddingLeft: 28,
+              paddingRight: filter ? 28 : 8,
+              fontSize: 13,
+            }}
+          />
+          {filter && (
+            <Button
+              icon="pi pi-times"
+              text
+              size="small"
+              onClick={() => setFilter('')}
+              style={{
+                position: 'absolute',
+                right: 2, top: '50%', transform: 'translateY(-50%)',
+                width: 24, height: 24, padding: 0,
+              }}
+              tooltip="Clear filter"
+              tooltipOptions={{position: 'left'}}
+            />
+          )}
+        </div>
+        <Button
+          label="Revert"
+          icon="pi pi-refresh"
+          size="small"
+          severity="secondary"
+          text
+          disabled={overrideCount === 0}
+          onClick={revertAll}
+          tooltip={overrideCount === 0
+            ? 'No customized values'
+            : `Revert ${overrideCount} customized value${overrideCount === 1 ? '' : 's'} to source defaults`}
+          tooltipOptions={{position: 'left', showOnDisabled: true}}
+        />
+      </div>
+      {!filterActive && <BatteriesEditor />}
+      {flatFilteredParams !== null ? (
+        flatFilteredParams.length === 0 ? (
+          <div style={{
+            margin: '10px',
+            padding: '20px 10px',
+            textAlign: 'center',
+            color: 'var(--surface-fg-faint)',
+            fontSize: 13,
+          }}>
+            No parameters match "{filter}".
+          </div>
+        ) : (
+          <div style={{margin: '5px 10px 5px 10px'}}>
+            {flatFilteredParams.map((param) => (
+              <ParameterInput
+                key={param.name}
+                value={(state.params.vars ?? {})[param.name]}
+                param={param}
+                shiftHeld={shiftHeld}
+                handleChange={handleChange} />
+            ))}
+          </div>
+        )
+      ) : (
+        visibleGroups.map(({group, params}) => (
+          <Fieldset
+              style={{
+                margin: '5px 10px 5px 10px',
+                backgroundColor: 'var(--surface-card-bg)',
+              }}
+              onCollapse={() => setTabOpen(group, false)}
+              onExpand={() => setTabOpen(group, true)}
+              collapsed={collapsedTabSet.has(group)}
+              key={group}
+              legend={group}
+              toggleable={true}>
+            {params.map((param) => (
+              <ParameterInput
+                key={param.name}
+                value={(state.params.vars ?? {})[param.name]}
+                param={param}
+                shiftHeld={shiftHeld}
+                handleChange={handleChange} />
+            ))}
+          </Fieldset>
+        ))
+      )}
     </div>
   );
 };
 
-function ParameterInput({param, value, className, style, handleChange}: {param: Parameter, value: any, className?: string, style?: CSSProperties, handleChange: (key: string, value: any) => void}) {
+function ParameterInput({param, value, className, style, shiftHeld, handleChange}: {param: Parameter, value: any, className?: string, style?: CSSProperties, shiftHeld?: boolean, handleChange: (key: string, value: any) => void}) {
+  // String params named like `*font` (or `*font_name`) get the bundled-font
+  // dropdown auto-injected when the SCAD source didn't already supply options.
+  const fontInjected = param.type === 'string' && !(param as any).options && isFontParam(param.name);
+  const stringOptions: ParameterOption[] | undefined =
+    param.type === 'string'
+      ? ((param as any).options ?? (fontInjected ? BUNDLED_FONTS : undefined))
+      : undefined;
+
   return (
     <div
       style={{
@@ -310,20 +554,23 @@ function ParameterInput({param, value, className, style, handleChange}: {param: 
           {param.type === 'number' && 'options' in param && (
             <Dropdown
               style={{flex: 1}}
-              value={value || param.initial}
+              value={value ?? param.initial}
               options={param.options}
               onChange={(e) => handleChange(param.name, e.value)}
               optionLabel="name"
               optionValue="value"
             />
           )}
-          {param.type === 'string' && param.options && (
+          {param.type === 'string' && stringOptions && (
             <Dropdown
-              value={value || param.initial}
-              options={param.options}
+              style={{flex: 1}}
+              value={value ?? param.initial}
+              options={stringOptions}
               onChange={(e) => handleChange(param.name, e.value)}
               optionLabel="name"
               optionValue="value"
+              editable={fontInjected}
+              filter={stringOptions.length > 8}
             />
           )}
           {param.type === 'boolean' && (
@@ -334,16 +581,20 @@ function ParameterInput({param, value, className, style, handleChange}: {param: 
           )}
           {!Array.isArray(param.initial) && param.type === 'number' && !('options' in param) && (
             <InputNumber
-              value={value || param.initial}
+              value={value ?? param.initial}
               showButtons
               size={5}
+              step={shiftHeld ? 0.1 : ((param as any).step ?? 1)}
+              minFractionDigits={0}
+              maxFractionDigits={6}
+              useGrouping={false}
               onValueChange={(e) => handleChange(param.name, e.value)}
             />
           )}
-          {param.type === 'string' && !param.options && (
+          {param.type === 'string' && !stringOptions && (
             <InputText
               style={{flex: 1}}
-              value={value || param.initial}
+              value={value ?? param.initial}
               onChange={(e) => handleChange(param.name, e.target.value)}
             />
           )}
@@ -362,7 +613,10 @@ function ParameterInput({param, value, className, style, handleChange}: {param: 
                   max={param.max}
                   showButtons
                   size={5}
-                  step={param.step}
+                  step={shiftHeld ? 0.1 : param.step}
+                  minFractionDigits={0}
+                  maxFractionDigits={6}
+                  useGrouping={false}
                   onValueChange={(e) => {
                     const newArray = [...(value ?? param.initial)];
                     newArray[index] = e.value;

@@ -23,8 +23,22 @@ export function clampRadius(radius: number, frameRadius: number): number {
   return Math.min(max, Math.max(min, radius));
 }
 
+export type CameraSettings = {
+  primaryMouseButton: 'pan' | 'rotate';
+  wasdNav: boolean;
+};
+
 type AttachOptions = {
   axesViewerEl?: HTMLElement | null;
+  // Reads current settings each time. Returning a fresh object every call is
+  // fine; we don't memoize. The controller polls this in event handlers and
+  // in the per-frame loop, so updates take effect immediately.
+  getSettings?: () => CameraSettings;
+  // Fires every time the model-viewer's 'load' event resolves, AFTER the
+  // controller has captured the new auto-framed radius. Letting the caller
+  // know the radius lets it scale stashed camera state when the bbox changes
+  // between models (so e.g. swapping a font doesn't break the camera).
+  onFrameRadiusUpdate?: (radius: number) => void;
 };
 
 type ModelViewerEl = HTMLElement & {
@@ -41,13 +55,24 @@ export function attachCameraController(
   const el = modelViewerEl;
   let frameRadius = NaN;
 
-  const onFirstLoad = () => {
-    try {
-      frameRadius = el.getCameraOrbit().radius;
-    } catch {}
-    el.removeEventListener('load', onFirstLoad);
+  // Re-capture frameRadius on every 'load' so the clamp range stays accurate
+  // even when the model bbox changes (e.g. font swap). Defer one rAF: at the
+  // moment 'load' fires, model-viewer hasn't always materialized the auto-
+  // framed orbit yet, so getCameraOrbit().radius can return a relative '%'
+  // value (a tiny unitless number) instead of the settled absolute meter
+  // value. Waiting one frame avoids capturing that garbage.
+  const onAnyLoad = () => {
+    requestAnimationFrame(() => {
+      try {
+        const r = el.getCameraOrbit().radius;
+        if (Number.isFinite(r) && r > 0) {
+          frameRadius = r;
+          opts.onFrameRadiusUpdate?.(r);
+        }
+      } catch {}
+    });
   };
-  el.addEventListener('load', onFirstLoad);
+  el.addEventListener('load', onAnyLoad);
 
   // Near-plane override. model-viewer's internal `updateNearFar` clamps the
   // camera near to `far / 1000`, so once you zoom closer than ~0.1% of the
@@ -77,8 +102,23 @@ export function attachCameraController(
     return scene.getCamera?.() ?? scene.camera ?? null;
   }
 
+  const defaultSettings: CameraSettings = { primaryMouseButton: 'pan', wasdNav: true };
+  const readSettings = (): CameraSettings => opts.getSettings?.() ?? defaultSettings;
+
+  type Mode = 'rotate' | 'pan' | null;
+  const activePointers = new Map<number, { x: number; y: number; type: string }>();
+  let mode: Mode = null;
+  let lastCentroidX = 0, lastCentroidY = 0;
+  let lastPinchDist = 0;
+
+  // Keys currently held for WASD/QE walk-mode (active only while a mouse-rotate
+  // gesture is in progress).
+  const heldKeys = new Set<string>();
+  let lastFrameTs = 0;
+
   let rafId = 0;
-  const tickNearOverride = () => {
+  const tick = (ts: number) => {
+    // 1) Near-plane override
     const scene = findScene();
     const cam = scene ? getCamera(scene) : null;
     if (cam && Number.isFinite(cam.far) && cam.far > 0) {
@@ -88,15 +128,23 @@ export function attachCameraController(
         cam.updateProjectionMatrix?.();
       }
     }
-    rafId = requestAnimationFrame(tickNearOverride);
-  };
-  rafId = requestAnimationFrame(tickNearOverride);
 
-  type Mode = 'rotate' | 'pan' | null;
-  const activePointers = new Map<number, { x: number; y: number; type: string }>();
-  let mode: Mode = null;
-  let lastCentroidX = 0, lastCentroidY = 0;
-  let lastPinchDist = 0;
+    // 2) WASD/QE walk while the rotate mouse button is held
+    const settings = readSettings();
+    const dt = lastFrameTs ? (ts - lastFrameTs) / 1000 : 0;
+    lastFrameTs = ts;
+    if (
+      settings.wasdNav &&
+      mode === 'rotate' &&
+      heldKeys.size > 0 &&
+      dt > 0 && dt < 0.25
+    ) {
+      stepWalk(dt);
+    }
+
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
 
   function updateOrbit(theta: number, phi: number, radius: number) {
     const orbit = el.getCameraOrbit();
@@ -142,10 +190,58 @@ export function attachCameraController(
   }
 
   function modeForMouse(button: number, shift: boolean): Mode {
-    if (button === 2) return 'rotate';
+    // Primary = LMB, Secondary = RMB. The user's `primaryMouseButton` setting
+    // says what the primary button does; the other gets the opposite. MMB is
+    // always pan. Shift inverts the primary action.
+    const primary = readSettings().primaryMouseButton;
+    const secondary: Mode = primary === 'pan' ? 'rotate' : 'pan';
     if (button === 1) return 'pan';
-    if (button === 0) return shift ? 'rotate' : 'pan';
+    if (button === 2) return secondary;
+    if (button === 0) {
+      if (shift) return secondary;
+      return primary;
+    }
     return null;
+  }
+
+  // Walk-step: translates camera target along the camera's own basis (true
+  // free-fly relative to where the camera is currently looking).
+  //   W/S = forward / backward along the look direction (tilts with the view).
+  //   A/D = strafe along camera-right.
+  //   Q/E = up / down along camera-up (perpendicular to look, in screen-up).
+  function stepWalk(dt: number) {
+    const orbit = el.getCameraOrbit();
+    const target = el.getCameraTarget();
+
+    let fwdAmt = 0, rightAmt = 0, upAmt = 0;
+    if (heldKeys.has('w')) fwdAmt   += 1;
+    if (heldKeys.has('s')) fwdAmt   -= 1;
+    if (heldKeys.has('d')) rightAmt += 1;
+    if (heldKeys.has('a')) rightAmt -= 1;
+    if (heldKeys.has('q')) upAmt    += 1;
+    if (heldKeys.has('e')) upAmt    -= 1;
+    if (fwdAmt === 0 && rightAmt === 0 && upAmt === 0) return;
+
+    // Speed proportional to radius so it feels right whether zoomed in tight
+    // or pulled back. Tuned so a held key crosses ~1 radius/sec.
+    const speed = orbit.radius * 1.2;
+
+    // Camera-relative basis. `right` and `up` come from sphericalBasis; the
+    // forward (look) direction is the negated camera-from-target offset for
+    // model-viewer's orbital convention: cam = (sin φ sin θ, cos φ, sin φ cos θ).
+    const { right, up } = sphericalBasis(orbit.theta, orbit.phi);
+    const st = Math.sin(orbit.theta), ct = Math.cos(orbit.theta);
+    const sp = Math.sin(orbit.phi),   cp = Math.cos(orbit.phi);
+    const fwd: [number, number, number] = [-sp * st, -cp, -sp * ct];
+
+    const sF = fwdAmt   * speed * dt;
+    const sR = rightAmt * speed * dt;
+    const sU = upAmt    * speed * dt;
+
+    const nx = target.x + sF * fwd[0] + sR * right[0] + sU * up[0];
+    const ny = target.y + sF * fwd[1] + sR * right[1] + sU * up[1];
+    const nz = target.z + sF * fwd[2] + sR * right[2] + sU * up[2];
+    updateTarget(nx, ny, nz);
   }
 
   function centroid(): { x: number; y: number } {
@@ -230,12 +326,36 @@ export function attachCameraController(
     e.preventDefault();
   };
 
+  // WASD/QE work only while the rotate mouse button is being held. Listening on
+  // window so the focus state doesn't matter while the user is dragging.
+  const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e']);
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!readSettings().wasdNav) return;
+    if (mode !== 'rotate') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (!WALK_KEYS.has(k)) return;
+    heldKeys.add(k);
+    e.preventDefault();
+  };
+  const onKeyUp = (e: KeyboardEvent) => {
+    const k = e.key.toLowerCase();
+    if (heldKeys.has(k)) {
+      heldKeys.delete(k);
+      e.preventDefault();
+    }
+  };
+  const onBlur = () => { heldKeys.clear(); };
+
   el.addEventListener('pointerdown', onPointerDown);
   el.addEventListener('pointermove', onPointerMove);
   el.addEventListener('pointerup', onPointerUp);
   el.addEventListener('pointercancel', onPointerUp);
   el.addEventListener('wheel', onWheel, { passive: false });
   el.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
 
   return () => {
     el.removeEventListener('pointerdown', onPointerDown);
@@ -244,7 +364,10 @@ export function attachCameraController(
     el.removeEventListener('pointercancel', onPointerUp);
     el.removeEventListener('wheel', onWheel);
     el.removeEventListener('contextmenu', onContextMenu);
-    el.removeEventListener('load', onFirstLoad);
+    el.removeEventListener('load', onAnyLoad);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onBlur);
     cancelAnimationFrame(rafId);
   };
 }

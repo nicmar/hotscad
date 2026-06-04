@@ -107,7 +107,7 @@ export default function FilePicker({className, style}: {className?: string, styl
   return (
       <TreeSelect 
           className={className}
-          title='OpenSCAD Playground Files'
+          title='HotSCAD Files'
           value={state.params.activePath}
           resetFilterOnHide={true}
           filterBy="key"

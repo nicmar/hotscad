@@ -243,6 +243,11 @@
         ],
         "notoBaseUrl": "https://github.com/openmaptiles/fonts/raw/master/noto-sans/",
         "liberationRepo": "https://github.com/shantigilbert/liberation-fonts-ttf.git",
-        "liberationBranch": "master"
+        "liberationBranch": "master",
+        "interReleaseUrl": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "interFiles": [
+            "extras/ttf/Inter-Black.ttf",
+            "extras/ttf/Inter-SemiBold.ttf"
+        ]
     }
 }

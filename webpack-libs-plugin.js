@@ -7,6 +7,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
+import JSZip from 'jszip';
 
 const execAsync = promisify(exec);
 
@@ -210,6 +211,7 @@ class OpenSCADLibrariesPlugin {
         const { fonts } = this.config;
         const notoDir = path.join(this.libsDir, 'noto');
         const liberationDir = path.join(this.libsDir, 'liberation');
+        const interDir = path.join(this.libsDir, 'inter');
 
         await this.ensureDir(notoDir);
 
@@ -227,12 +229,31 @@ class OpenSCADLibrariesPlugin {
             await this.cloneRepo(fonts.liberationRepo, liberationDir, fonts.liberationBranch);
         }
 
+        // Extract Inter TTFs from release zip
+        if (fonts.interReleaseUrl && fonts.interFiles?.length) {
+            await this.ensureDir(interDir);
+            const missing = fonts.interFiles.filter(f => !existsSync(path.join(interDir, path.basename(f))));
+            if (missing.length) {
+                const zipPath = path.join(this.libsDir, 'inter-release.zip');
+                if (!existsSync(zipPath)) {
+                    await this.downloadFile(fonts.interReleaseUrl, zipPath);
+                }
+                const zip = await JSZip.loadAsync(await fs.readFile(zipPath));
+                for (const entry of fonts.interFiles) {
+                    const file = zip.file(entry);
+                    if (!file) throw new Error(`Inter zip missing entry: ${entry}`);
+                    const out = path.join(interDir, path.basename(entry));
+                    await fs.writeFile(out, await file.async('nodebuffer'));
+                }
+            }
+        }
+
         // Create fonts zip
         const fontsZip = path.join(this.publicLibsDir, 'fonts.zip');
         await this.ensureDir(this.publicLibsDir);
 
         console.log('Creating fonts.zip');
-        const fontsCmd = `zip -r ${fontsZip} -j fonts.conf libs/noto/*.ttf libs/liberation/*.ttf libs/liberation/LICENSE libs/liberation/AUTHORS`;
+        const fontsCmd = `zip -r ${fontsZip} -j fonts.conf libs/noto/*.ttf libs/liberation/*.ttf libs/liberation/LICENSE libs/liberation/AUTHORS libs/inter/*.ttf`;
         await execAsync(fontsCmd);
 
         console.log('Fonts setup completed');

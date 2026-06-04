@@ -121,7 +121,9 @@ export function ViewCube({
     if (!el) return;
     dragRef.current = {x: e.clientX, y: e.clientY, pointerId: e.pointerId};
     dragMovedRef.current = false;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Intentionally NOT calling setPointerCapture here: capturing on pointerdown
+    // routes the subsequent click event to the wrapper, stealing it from the
+    // face div's onClick. We capture only once a real drag is detected.
   }, []);
 
   const onPointerMoveCube = useCallback((e: React.PointerEvent) => {
@@ -129,7 +131,11 @@ export function ViewCube({
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) dragMovedRef.current = true;
+    if (!dragMovedRef.current && Math.abs(dx) + Math.abs(dy) > 3) {
+      dragMovedRef.current = true;
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+    }
+    if (!dragMovedRef.current) return;
     drag.x = e.clientX;
     drag.y = e.clientY;
     const el = modelViewerRef.current;

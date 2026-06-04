@@ -1,129 +1,1140 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenSCAD Playground</title>
-    <meta name="description" content="OpenSCAD Playground: edit .scad models and render them to STL from the browser (WebAssembly build OpenSCAD, with Monaco editor and STL Viewer)">
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HotSCAD — OpenSCAD for agentic CAD design</title>
+  <meta name="description" content="HotSCAD is OpenSCAD built for agentic  CAD design: every save renders. Hand the .scad file to Claude, Codex or Gemini — or type it yourself — and the preview updates instantly. Files never leave your computer.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0d0c0b">
 
-    <link rel="icon" href="favicon.ico">
-    <link rel="apple-touch-icon" href="logo192.png">
-    <!-- https://developers.google.com/web/fundamentals/web-app-manifest/ -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#000000">
+  <meta property="og:title" content="HotSCAD — OpenSCAD built for agentic coding">
+  <meta property="og:description" content="Every save renders. Same instant feedback whether Claude is at the keyboard or you are.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nicmar.nu/hotscad/">
 
-    <link rel="prefetch" href="openscad.wasm">
-    <link rel="prefetch" href="openscad-worker.js">
-    <link rel="prefetch" href="libraries/fonts.zip">
+  <!-- Apply the OS color-scheme preference before paint to avoid flash, and
+       update live if the user toggles their system theme. -->
+  <script>
+    (function() {
+      try {
+        var mql = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)');
+        var apply = function(isLight) {
+          document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+        };
+        apply(mql && mql.matches);
+        if (mql && mql.addEventListener) mql.addEventListener('change', function(e) { apply(e.matches); });
+        else if (mql && mql.addListener) mql.addListener(function(e) { apply(e.matches); });
+      } catch (e) { /* keep default */ }
+    })();
+  </script>
 
-    <link rel="prefetch" href="libraries/MCAD.zip">
-    <link rel="prefetch" href="libraries/BOSL2.zip">
-    <link rel="prefetch" href="libraries/BOSL.zip">
-    <link rel="prefetch" href="libraries/NopSCADlib.zip">
-    <link rel="prefetch" href="libraries/FunctionalOpenSCAD.zip">
-    <link rel="prefetch" href="libraries/funcutils.zip">
-    <link rel="prefetch" href="libraries/smooth-prim.zip">
-    <link rel="prefetch" href="libraries/closepoints.zip">
-    <link rel="prefetch" href="libraries/plot-function.zip">
-    <link rel="prefetch" href="libraries/YAPP_Box.zip">
-    <link rel="prefetch" href="libraries/Stemfie_OpenSCAD.zip">
-    <link rel="prefetch" href="libraries/UB.scad.zip">
-    <link rel="prefetch" href="libraries/openscad-tray.zip">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-    <!-- <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js" defer></script> -->
-    <script type="module" src="./model-viewer.min.js" defer></script>
-    
-    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/BrowserFS/2.0.0/browserfs.min.js" defer></script> -->
-    <script src="./browserfs.min.js" defer></script>
+  <style>
+    /* --------------------------------------- tokens (dark first, light override) */
+    :root,
+    :root[data-theme="dark"] {
+      --bg:           #0d0c0b;
+      --bg-elev:     #161412;
+      --card:        #16140f;
+      --card-hover:  #1c1915;
+      --ink:         #f1ece1;
+      --ink-muted:   #b3aa9a;
+      --ink-soft:    #807767;
+      --hair:        #2a2620;
+      --hair-strong: #3b362e;
+      --hot:         #FF5A1F;
+      --hot-deep:    #ff7036;
+      --hot-soft:    rgba(255, 90, 31, 0.10);
+      --shadow:      0 24px 60px -28px rgba(0, 0, 0, 0.65);
+    }
+    :root[data-theme="light"] {
+      --bg:           #FAF7F2;
+      --bg-elev:     #FFFCF6;
+      --card:        #FFFCF6;
+      --card-hover:  #FFFFFF;
+      --ink:         #13110F;
+      --ink-muted:   #4a443c;
+      --ink-soft:    #847a6c;
+      --hair:        #e6dfd3;
+      --hair-strong: #cfc6b6;
+      --hot:         #FF5A1F;
+      --hot-deep:    #d8430f;
+      --hot-soft:    rgba(255, 90, 31, 0.07);
+      --shadow:      0 24px 60px -32px rgba(19, 17, 15, 0.18);
+    }
 
-    <script src="./index.js" defer></script>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html { background: var(--bg); }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      font-weight: 400;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      transition: background 0.3s ease, color 0.3s ease;
+      overflow-x: hidden;
+    }
+    a { color: inherit; }
+    a:focus-visible {
+      outline: 2px solid var(--hot);
+      outline-offset: 3px;
+      border-radius: 2px;
+    }
+    code, pre {
+      font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.92em; color: var(--hot); }
 
-    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-fork-ribbon-css/0.2.3/gh-fork-ribbon.min.css"> -->
-    <link rel="stylesheet" href="./gh-fork-ribbon.min.css">
+    /* --------------------------------------- background ornament */
+    .axon {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.5;
+      background-image:
+        linear-gradient(60deg,  transparent 0 calc(50% - 0.5px), var(--hair) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%),
+        linear-gradient(-60deg, transparent 0 calc(50% - 0.5px), var(--hair) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%),
+        linear-gradient(0deg,   transparent 0 calc(50% - 0.5px), var(--hair) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px) 100%);
+      background-size: 44px 76px;
+      mask-image: radial-gradient(ellipse at 50% 25%, #000 0%, transparent 65%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 25%, #000 0%, transparent 65%);
+    }
 
-    <link id="primereact-theme" rel="stylesheet" href="./themes/lara-light-indigo/theme.css">
+    .shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 28px;
+      position: relative;
+      z-index: 1;
+    }
+    @media (max-width: 640px) { .shell { padding: 0 20px; } }
 
-    <style>
-      #root,
-      body,
-      html {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        margin: 0;
+    /* --------------------------------------- nav (sticky reveal on scroll) */
+    nav.top {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      border-bottom: 1px solid var(--hair);
+      backdrop-filter: saturate(140%) blur(10px);
+      -webkit-backdrop-filter: saturate(140%) blur(10px);
+      background: color-mix(in oklab, var(--bg) 78%, transparent);
+      transform: translateY(-100%);
+      transition: transform 0.28s ease, opacity 0.28s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    nav.top.visible {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    nav.top .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 12px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    @media (max-width: 640px) { nav.top .nav-inner { padding: 12px 20px; } }
+    nav.top .right-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 0px;
+      text-decoration: none;
+      font-size: 18px;
+      line-height: 1;
+      letter-spacing: -0.01em;
+    }
+    .mark .m-hot { color: var(--hot); font-weight: 800; }
+    .mark .m-scad { color: var(--ink); font-weight: 400; }
 
-        height: 100vh;
-        height: var(--app-height);
-      }
+    .btn-mini {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--hot);
+      color: #fff;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: -0.005em;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: background .2s, transform .15s ease;
+    }
+    .btn-mini:hover { background: var(--hot-deep); transform: translateY(-1px); }
+    .btn-mini .arrow { display: inline-block; transition: transform .2s; }
+    .btn-mini:hover .arrow { transform: translateX(3px); }
 
-      .p-tabmenu-nav {
-        justify-content: center;
-      }
+    /* --------------------------------------- hero */
+    header.hero {
+      padding: 56px 0 36px;
+    }
+    .hero-title-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin: 0 0 22px;
+    }
+    .hero-icon {
+      flex-shrink: 0;
+      width: clamp(44px, 8.5vw, 100px);
+      height: clamp(44px, 8.5vw, 100px);
+      color: var(--ink);
+    }
+    .hero-icon .reload { color: var(--hot); }
+    h1.hero-title { margin: 0; }
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .eyebrow .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--hot);
+      box-shadow: 0 0 0 0 rgba(255, 90, 31, 0.45);
+      animation: pulse 2.4s ease-out infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(255, 90, 31, 0.55); }
+      70%  { box-shadow: 0 0 0 12px rgba(255, 90, 31, 0); }
+      100% { box-shadow: 0 0 0 0   rgba(255, 90, 31, 0); }
+    }
+    h1.hero-title {
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 0.92;
+      font-size: clamp(44px, 8.5vw, 116px);
+    }
+    h1.hero-title .accent { color: var(--hot); }
+    h1.hero-title .light  { font-weight: 400; color: var(--ink); }
+    .tagline {
+      font-size: clamp(20px, 2.6vw, 28px);
+      line-height: 1.35;
+      color: var(--ink);
+      max-width: 720px;
+      margin: 0 0 22px;
+      font-weight: 500;
+      letter-spacing: -0.015em;
+    }
+    .lede {
+      max-width: 580px;
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--ink-muted);
+      margin: 0 0 36px;
+    }
+    .cta-row {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 26px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+      text-decoration: none;
+      border: 1.5px solid transparent;
+      transition: transform .15s ease, background .2s, color .2s, border-color .2s;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--hot);
+      color: #fff;
+      box-shadow: 0 8px 24px -8px rgba(255, 90, 31, 0.5);
+    }
+    .btn-primary:hover { background: var(--hot-deep); transform: translateY(-1px); }
+    .btn-primary .arrow { transition: transform .25s; display: inline-block; }
+    .btn-primary:hover .arrow { transform: translateX(4px); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--hair-strong);
+    }
+    .btn-ghost:hover { border-color: var(--ink); }
 
-      .p-fieldset .p-fieldset-content {
-        padding: 0 !important;
-      }
-      .p-fieldset-legend {
-        background-color: rgba(255,255,255,0.4) !important;
-      }
+    /* --------------------------------------- video (above the fold) */
+    .video-slot {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      margin: 8px 0 28px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--hair);
+      background: var(--bg-elev);
+      box-shadow: var(--shadow);
+    }
+    .video-slot video,
+    .video-slot iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+    .video-slot .video-ph {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--ink-soft);
+      text-align: center;
+      padding: 24px;
+    }
+    .video-slot .video-ph .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .video-slot .video-ph .filename {
+      background: var(--bg);
+      padding: 4px 10px;
+      border-radius: 5px;
+      color: var(--ink-muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      border: 1px solid var(--hair);
+    }
+    .video-slot .video-ph .play {
+      width: 64px; height: 64px;
+      border-radius: 999px;
+      background: var(--hot);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px -8px rgba(255, 90, 31, 0.5);
+    }
 
-      .p-fieldset-legend,
-      .p-fieldset-content {
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-      }
+    /* --------------------------------------- privacy callout */
+    .privacy {
+      display: flex;
+      gap: 18px;
+      padding: 22px 26px;
+      border: 1px solid var(--hair-strong);
+      background: var(--hot-soft);
+      border-radius: 14px;
+      margin: 0 0 24px;
+      align-items: flex-start;
+    }
+    .privacy .icon {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--hot);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .privacy h3 {
+      margin: 0 0 4px;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--ink);
+    }
+    .privacy p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--ink-muted);
+      line-height: 1.55;
+    }
 
-      .absolute-fill {
-        position: absolute;
-        top: 0;
-        right: 0;
-        left: 0;
-        bottom: 0;
-      }
+    /* --------------------------------------- sections */
+    section { padding: 64px 0; position: relative; }
+    section + section { border-top: 1px solid var(--hair); }
+    h2 {
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+      font-size: clamp(28px, 4.5vw, 44px);
+      margin: 0 0 8px;
+    }
+    .section-sub {
+      font-size: 14px;
+      color: var(--ink-soft);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 0 0 36px;
+    }
+    p.body {
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--ink-muted);
+      max-width: 64ch;
+      margin: 0 0 16px;
+    }
 
-      .monaco-editor,
-      .openscad-editor {
-        background-color: rgba(255,255,255,0.5) !important;
-      }
-      textarea.openscad-editor {
-        font-family: "Droid Sans Mono", "monospace", monospace;
-        font-weight: normal;
-        font-size: 16px;
-        font-feature-settings: "liga" 0, "calt" 0;
-        line-height: 22px;
-        letter-spacing: 0px;
-      }
-      .overflow-guard,
-      .monaco-scrollable-element,
-      .monaco-editor-background {
-        background-color: transparent !important;
-      }
+    /* --------------------------------------- feature rows (bento, text-left + shot-right) */
+    .feature {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+      gap: 22px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 760px) { .feature { grid-template-columns: 1fr; } }
 
-      .opacity-animated {
-        transition: opacity 0.5s ease-in-out;
-      }
-      .opacity-0 {
-        opacity: 0;
-      }
+    .fbox {
+      padding: 28px 28px;
+      border: 1px solid var(--hair);
+      border-radius: 14px;
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: background .2s, border-color .2s;
+    }
+    .fbox:hover { background: var(--card-hover); }
+    .fbox .ftag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--hot);
+      margin-bottom: 8px;
+    }
+    .fbox h3 {
+      font-weight: 700;
+      font-size: 19px;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+      margin: 0 0 4px;
+      color: var(--ink);
+    }
+    .fbox p {
+      margin: 0;
+      font-size: 14.5px;
+      line-height: 1.6;
+      color: var(--ink-muted);
+    }
+    .fbox .legend {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--hair-strong);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--ink-muted);
+    }
+    .fbox .legend .lr { display: inline-flex; align-items: center; gap: 8px; }
+    .fbox .legend .d { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .d.green { background: #22c55e; }
+    .d.amber { background: #f59e0b; }
+    .d.red   { background: #ef4444; }
 
-      @media only screen and (max-height: 600px),
-           only screen and (max-width: 600px),
-           only screen and (max-width: 767px),
-           only screen and (max-aspect-ratio: 1/2) {
-        .github-fork-ribbon {
-          display: none;
-        }
-      }
+    /* --------------------------------------- screenshot slot */
+    .shot {
+      border: 1px solid var(--hair);
+      border-radius: 14px;
+      background: var(--bg-elev);
+      position: relative;
+      aspect-ratio: 16 / 10;
+      cursor: zoom-in;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color .2s, transform .2s;
+    }
+    .shot:hover { border-color: var(--hair-strong); transform: translateY(-1px); }
+    .shot:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .shot .ph {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      padding: 20px;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .shot .ph svg { opacity: .35; }
+    .shot .ph .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    .shot .ph .filename {
+      background: var(--bg);
+      padding: 3px 9px;
+      border-radius: 4px;
+      color: var(--ink-muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      border: 1px solid var(--hair);
+    }
 
-      .p-tabmenu-nav {
-        padding-right: 30px;
-      }
+    /* --------------------------------------- install block */
+    .install pre {
+      background: var(--card);
+      border: 1px solid var(--hair);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin: 0;
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: var(--ink);
+      overflow-x: auto;
+    }
+    .install pre .cm  { color: var(--ink-soft); }
+    .install pre .cmd { color: var(--hot); }
 
-      .github-fork-ribbon:before { background-color: #333; }
-    </style>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run the OpenSCAD Playground.</noscript>
-    <div id="root"></div>
-  </body>
+    .install ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .install ul li {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 4px 10px;
+      border: 1px solid var(--hair);
+      border-radius: 999px;
+      color: var(--ink-muted);
+      background: var(--card);
+    }
+
+    /* --------------------------------------- expectations callout */
+    .heads-up {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 22px;
+      padding: 24px 26px;
+      border: 1px solid var(--hair-strong);
+      border-left: 3px solid var(--hot);
+      border-radius: 14px;
+      background: var(--card);
+      align-items: start;
+    }
+    .heads-up .icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: var(--hot-soft);
+      color: var(--hot);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .heads-up h3 {
+      margin: 0 0 8px;
+      font-weight: 700;
+      font-size: 17px;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+    .heads-up p {
+      margin: 0 0 10px;
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--ink-muted);
+      max-width: 64ch;
+    }
+    .heads-up p:last-child { margin-bottom: 0; }
+    .heads-up p strong { color: var(--ink); font-weight: 600; }
+    @media (max-width: 520px) {
+      .heads-up { grid-template-columns: 1fr; }
+      .heads-up .icon { display: none; }
+    }
+
+    /* --------------------------------------- about me */
+    .about {
+      display: grid;
+      grid-template-columns: 200px minmax(0, 1fr);
+      gap: 36px;
+      align-items: start;
+    }
+    @media (max-width: 640px) {
+      .about { grid-template-columns: 1fr; gap: 20px; justify-items: center; text-align: center; }
+    }
+    .about-photo {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid var(--hot);
+      box-shadow: 0 12px 32px -16px rgba(0,0,0,0.5);
+      background: var(--bg-elev);
+    }
+    .about-text h3 {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      font-size: 22px;
+      line-height: 1.1;
+      margin: 0 0 14px;
+      color: var(--ink);
+    }
+    .about-text p { font-size: 16px; line-height: 1.7; color: var(--ink-muted); margin: 0 0 14px; max-width: 56ch; }
+    .about-text .meta-note {
+      font-size: 14px;
+      color: var(--ink-soft);
+      border-left: 2px solid var(--hot);
+      padding: 4px 0 4px 14px;
+      max-width: 56ch;
+      margin: 18px 0 0;
+    }
+    .about-text .makerworld {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--hair-strong);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      transition: border-color .2s, background .2s, transform .15s;
+    }
+    .about-text .makerworld:hover { border-color: var(--hot); background: var(--hot-soft); transform: translateY(-1px); }
+
+    /* --------------------------------------- bottom CTA */
+    .open-strip {
+      padding: 72px 0 80px;
+      text-align: center;
+      border-top: 1px solid var(--hair);
+      background:
+        radial-gradient(ellipse at 50% 0%, var(--hot-soft) 0%, transparent 55%);
+    }
+    .open-strip h2 { max-width: 22ch; margin: 0 auto 24px; }
+    .open-strip p {
+      max-width: 44ch;
+      margin: 0 auto 32px;
+      font-size: 16px;
+      color: var(--ink-muted);
+    }
+
+    /* --------------------------------------- footer */
+    footer.foot {
+      padding: 40px 0 60px;
+      font-size: 13px;
+      color: var(--ink-soft);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+    }
+    @media (max-width: 640px) { footer.foot { grid-template-columns: 1fr; } }
+    footer.foot .colophon { max-width: 520px; line-height: 1.7; }
+    footer.foot a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--hair-strong); }
+    footer.foot a:hover { border-color: var(--hot); }
+    footer.foot .right {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      text-align: right;
+    }
+    @media (max-width: 640px) { footer.foot .right { text-align: left; } }
+
+    /* --------------------------------------- lightbox */
+    dialog.lb {
+      border: none;
+      padding: 0;
+      background: transparent;
+      max-width: 92vw;
+      max-height: 92vh;
+      color: var(--ink);
+    }
+    dialog.lb::backdrop {
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(6px);
+    }
+    dialog.lb .wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
+    dialog.lb img {
+      max-width: 92vw;
+      max-height: 80vh;
+      display: block;
+      border-radius: 10px;
+      box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.6);
+      background: var(--bg-elev);
+    }
+    dialog.lb .cap {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      color: #d1ccc1;
+    }
+    dialog.lb .close-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(0,0,0,0.4);
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    dialog.lb .close-btn:hover { border-color: var(--hot); color: var(--hot); }
+  </style>
+</head>
+<body>
+
+  <div class="axon" aria-hidden="true"></div>
+
+  <nav class="top" id="topNav">
+    <div class="nav-inner">
+      <a class="mark" href="/">
+        <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round">
+            <path d="M22 27 L32 21 L42 27 L32 33 Z"/>
+            <path d="M22 27 L22 39 L32 45 L32 33 Z"/>
+            <path d="M42 27 L42 39 L32 45 L32 33 Z"/>
+          </g>
+          <path d="M42 15.7 A20 20 0 1 1 22 15.7" fill="none" stroke="#FF5A1F" stroke-width="4.5" stroke-linecap="round"/>
+          <polygon points="31,10 24,19 20,12" fill="#FF5A1F"/>
+        </svg>
+        <span class="m-hot">Hot</span><span class="m-scad">SCAD</span>
+      </a>
+      <div class="right-group">
+        <a class="btn-mini" href="app.html">
+          Open HotSCAD
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="shell">
+
+    <!-- =========================================================== HERO -->
+    <header class="hero" id="hero">
+      <div class="hero-title-row">
+        <svg class="hero-icon" viewBox="0 0 64 64" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round">
+            <path d="M22 27 L32 21 L42 27 L32 33 Z"/>
+            <path d="M22 27 L22 39 L32 45 L32 33 Z"/>
+            <path d="M42 27 L42 39 L32 45 L32 33 Z"/>
+          </g>
+          <path class="reload" d="M42 15.7 A20 20 0 1 1 22 15.7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+          <polygon class="reload" points="31,10 24,19 20,12" fill="currentColor"/>
+        </svg>
+        <h1 class="hero-title"><span class="accent">Hot</span><span class="light">SCAD</span></h1>
+      </div>
+      <p class="tagline">OpenSCAD for agentic CAD design: every save renders. Instant feedback whether Claude is at the keyboard or you are.</p>
+      <p class="lede">
+        Open a <span class="mono">.scad</span> file on your computer, edit it in your favorite editor &mdash;
+        or hand it to Claude, Codex or Gemini &mdash; and HotSCAD re-renders the preview the moment the file is saved.
+        No copy-paste. No reload. Nothing to install.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="app.html">
+          Open HotSCAD in browser
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/nicmar/hotscad" target="_blank" rel="noreferrer">
+          View on GitHub
+        </a>
+      </div>
+    </header>
+
+    <!-- =========================================================== VIDEO -->
+    <div class="video-slot" id="videoSlot" aria-label="HotSCAD demo video">
+      <!-- Drop your video here. Either uncomment the <video> tag and provide a file,
+           or replace with a YouTube/Vimeo <iframe>. Leaving the placeholder visible
+           until then. -->
+      <!--
+      <video controls playsinline preload="metadata" poster="screenshots/video-poster.jpg">
+        <source src="hotscad-demo.mp4" type="video/mp4">
+      </video>
+      -->
+      <div class="video-ph">
+        <span class="play" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+        <span class="label">Demo video</span>
+        <span class="filename">hotscad-demo.mp4 / YouTube embed</span>
+      </div>
+    </div>
+
+    <!-- =========================================================== PRIVACY -->
+    <div class="privacy">
+      <div class="icon" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <div>
+        <h3>Your files never leave your computer.</h3>
+        <p>HotSCAD reads the file you pick using the browser's File System Access API. Nothing is uploaded anywhere &mdash; every render, every preview, every customizer value runs locally in your browser tab. The site itself is static; there's no backend to send anything to.</p>
+      </div>
+    </div>
+
+    <!-- =========================================================== WHAT THIS IS -->
+    <section>
+      <h2>What is HotSCAD?</h2>
+      <p class="body">
+        This is a fork based on <a href="https://github.com/openscad/openscad-playground" target="_blank" rel="noreferrer" style="color:var(--ink);border-bottom:1px solid var(--hair-strong);text-decoration:none;">openscad-playground</a>
+        by Olivier Chafik, which solved the speed problem first by getting OpenSCAD to run in the browser.
+        I wanted to further improve the user experience to iterate faster and more efficiently.
+        Everything below is what HotSCAD adds on top.
+      </p>
+    </section>
+
+    <!-- =========================================================== EDIT -->
+    <section id="edit">
+      <h2>Getting started</h2>
+      <p class="section-sub">Just open and go.</p>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Open file — hot reload in the browser</h3>
+          <p>Click <strong>Open Local…</strong> in the editor toolbar and pick a <span class="mono">.scad</span> on your computer. HotSCAD watches the file and re-renders every time you save it &mdash; from VS Code, Cursor, Sublime, anywhere. Same loop works if Claude / Codex / Gemini is the one doing the editing.</p>
+          <div class="legend" aria-label="Sync status indicator">
+            <div class="lr"><span class="d green"></span>Watching, in sync</div>
+            <div class="lr"><span class="d amber"></span>Manual reload mode (Firefox / Safari)</div>
+            <div class="lr"><span class="d red"></span>Editor differs from disk &mdash; one click pulls latest</div>
+          </div>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/hot-reload.png" data-label="Hot reload">
+          <span class="ph"><span class="label">Screenshot</span><span>hot reload</span><span class="filename">screenshots/hot-reload.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Dark mode (finally)</h3>
+          <p>The whole app — editor, viewer, customizer, dialogs — now renders dark by default. Switch to light any time from Settings; HotSCAD remembers your choice and follows your OS preference if you leave it on Auto.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/dark-mode.png" data-label="Dark mode">
+          <span class="ph"><span class="label">Screenshot</span><span>dark mode</span><span class="filename">screenshots/dark-mode.png</span></span>
+        </button>
+      </div>
+
+    </section>
+
+    <!-- =========================================================== VIEW -->
+    <section id="view">
+      <h2>The View tab</h2>
+      <p class="section-sub">Navigate easier and faster.</p>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Camera steady on re-render</h3>
+          <p>Tweaking a parameter doesn't snap the view back to default. The camera holds its position through every render, so iterating on small details actually works.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/camera-survives.png" data-label="Camera survives edits">
+          <span class="ph"><span class="label">Screenshot</span><span>camera survives edits</span><span class="filename">screenshots/camera-survives.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>ViewCube</h3>
+          <p>Click a face (Front, Top, a corner) to snap to that view. Drag the cube to orbit. Same as Fusion.</p>
+          <p>Two buttons. Home snaps back to a 3/4 view. Fit frames the current model exactly to the panel.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/viewcube.png" data-label="ViewCube">
+          <span class="ph"><span class="label">Screenshot</span><span>ViewCube</span><span class="filename">screenshots/viewcube.png</span></span>
+        </button>
+      </div>
+
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>LMB pan, RMB rotate and Dark mode!</h3>
+          <p>Fusion-style mouse mapping by default. Pan with the primary mouse button, orbit with the secondary. Scroll to zoom.</p>
+          <p>In Settings you can switch that and you'll also find more settings, like debounce that sets how quickly it re-renders when you change parameters.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/mouse-controls.png" data-label="Mouse controls">
+          <span class="ph"><span class="label">Screenshot</span><span>mouse controls</span><span class="filename">screenshots/mouse-controls.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>WASD navigation</h3>
+          <p>Game-style mouse/keyboard navigation. Hold RMB to rotate and aim where you want to go, and press W to move forward.</p>
+          <p>Pressing Q and E moves down and up.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/mouse-controls.png" data-label="Mouse controls">
+          <span class="ph"><span class="label">Screenshot</span><span>mouse controls</span><span class="filename">screenshots/mouse-controls.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Show dimensions</h3>
+          <p>A toggle prints the bounding-box dimensions next to each component, in millimeters. Useful for checking print volume without opening a slicer.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/dimensions.png" data-label="Show dimensions">
+          <span class="ph"><span class="label">Screenshot</span><span>dimensions</span><span class="filename">screenshots/dimensions.png</span></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- =========================================================== CUSTOMIZE -->
+    <section id="customize">
+      <h2>The Customize tab</h2>
+      <p class="section-sub">Parameters and per-layer color</p>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Auto font dropdown</h3>
+          <p>Any string parameter ending in <span class="mono">font</span> turns into a dropdown of bundled fonts &mdash; Inter Black / SemiBold, Liberation Sans / Serif / Mono, Noto Sans. You can still type a custom font name; the dropdown is editable.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/font-dropdown.png" data-label="Auto font dropdown">
+          <span class="ph"><span class="label">Screenshot</span><span>font dropdown</span><span class="filename">screenshots/font-dropdown.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Quick parameter settings</h3>
+          The parameter panel has been redesigned to be easier to use with new smart features.
+          <ul>
+          <li><p><b>Filter parameters</b> - Search for a parameter for easy access</p>
+          <li><p><b>Revert all values</b> - When you've slid every slider down a rabbit hole, one click puts every customizer override back to the defaults declared in the source file.</p>
+          <li><p><b>Show Customized</b> - Hide all parameters you haven't changed, easier to focus</p>
+          </ul>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/revert-all.png" data-label="Revert all values">
+          <span class="ph"><span class="label">Screenshot</span><span>revert all</span><span class="filename">screenshots/revert-all.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Click to nudge, Shift-click for fine</h3>
+          <p>Every number input has spinner arrows. <strong>Click</strong> to step the value by <span class="mono">1</span>; <strong>Shift-click</strong> (or hold Shift and use the arrow keys) to step by <span class="mono">0.1</span>. Faster than dragging a slider when you know roughly where you're going.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/shift-step.png" data-label="Shift-click for 0.1 steps">
+          <span class="ph"><span class="label">Screenshot</span><span>shift-click stepping</span><span class="filename">screenshots/shift-step.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Layer-colors panel</h3>
+          <p>Preview how the model looks with filament colors swapped at specific Z heights. Useful for planning a two- or three-color print without going to the slicer.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/layer-colors.png" data-label="Layer colors panel">
+          <span class="ph"><span class="label">Screenshot</span><span>layer colors</span><span class="filename">screenshots/layer-colors.png</span></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- =========================================================== HEADS-UP -->
+    <section id="expectations">
+      <div class="heads-up" role="note" aria-label="Expectations for AI-assisted modeling">
+        <div class="icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v4"/>
+            <path d="M12 16h.01"/>
+          </svg>
+        </div>
+        <div>
+          <h3>A note before you start agent-coding your CAD</h3>
+          <p>
+            <strong>Results vary, a lot.</strong> Different LLMs handle OpenSCAD with different levels of competence,
+            and even the good ones occasionally hand you back something that looks nothing like what you asked for.
+            Sometimes a part shows up in seconds; sometimes the agent will burn fifteen minutes of back-and-forth
+            chasing a single chamfer.
+          </p>
+          <p>
+            If you already know CAD and you're optimizing for speed, this workflow can feel frustrating. <strong>If you
+            don't know CAD &mdash; or just don't want to learn it &mdash; but you still want to design and print real things, this is the easiest way in.</strong>
+            Describe what you want in plain English, iterate on the result, print it. That's the loop HotSCAD is built around.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== INSTALL -->
+    <section id="install" class="install">
+      <h2>Run it locally</h2>
+      <p class="section-sub">For hacking, forking, or running offline</p>
+
+      <p class="body">You don't need to install anything to use HotSCAD &mdash; just <a href="app.html" style="color:var(--ink);border-bottom:1px solid var(--hair-strong);text-decoration:none;">open HotSCAD in your browser</a>. But if you want to hack on it or run it on your own machine:</p>
+
+      <ul aria-label="Prerequisites">
+        <li>Node.js ≥ 18.12</li>
+        <li>npm</li>
+        <li>git</li>
+        <li>zip</li>
+      </ul>
+
+<pre><span class="cm"># Clone the repo</span>
+<span class="cmd">git clone</span> https://github.com/nicmar/hotscad.git
+<span class="cmd">cd</span> hotscad
+
+<span class="cm"># Download OpenSCAD WASM + bundled libraries (one-time, takes a minute)</span>
+<span class="cmd">npm run</span> build:libs
+
+<span class="cm"># Install JS deps</span>
+<span class="cmd">npm install</span>
+
+<span class="cm"># Start the dev server at http://localhost:4000/</span>
+<span class="cmd">npm run</span> start
+
+<span class="cm"># Production build into ./dist</span>
+<span class="cmd">npm run</span> build:all</pre>
+
+    </section>
+
+    <!-- =========================================================== OPEN STRIP -->
+  </div>
+
+  <div class="open-strip">
+    <div class="shell">
+      <h2>That's all there is.</h2>
+      <p>Open HotSCAD, point it at a <span class="mono">.scad</span> file on your computer, go design!</p>
+      <a class="btn btn-primary" href="app.html" style="font-size:17px;padding:18px 32px;">
+        Open HotSCAD
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="shell">
+    <!-- =========================================================== ABOUT ME -->
+    <section id="about">
+      <div class="about">
+        <img class="about-photo" src="nicmar_profile.png" alt="Portrait of nicmar" loading="lazy">
+        <div class="about-text">
+          <h3>About me</h3>
+          <p>
+            I'm a newbie 3D-printer and CAD designer, but a lifelong tinkerer and maker at heart.
+            If I see a problem, I gotta fix it, and if I can 3D-print it, even better! 😅
+          </p>
+          <a class="makerworld" href="https://makerworld.com/en/@nicmar" target="_blank" rel="noreferrer">
+            See my designs on MakerWorld
+            <span aria-hidden="true">→</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div class="colophon">
+        Forked from
+        <a href="https://github.com/openscad/openscad-playground" target="_blank" rel="noreferrer">openscad-playground</a>
+        by Olivier Chafik. Built on
+        <a href="https://openscad.org" target="_blank" rel="noreferrer">OpenSCAD</a>
+        by Marius Kintel et al., the
+        <a href="https://github.com/DSchroer/openscad-wasm" target="_blank" rel="noreferrer">WebAssembly build</a>
+        by DSchroer, and
+        <a href="https://github.com/elalish/manifold" target="_blank" rel="noreferrer">Manifold</a>
+        by Emmett Lalish.
+        HotSCAD was built with Claude Code.
+
+
+      </div>
+      <div class="right">
+        © <span id="y"></span> · GPL v3<br>
+        nicmar.nu / hotscad
+      </div>
+    </footer>
+  </div>
+
+  <!-- =========================================================== LIGHTBOX -->
+  <dialog class="lb" id="lb" aria-label="Screenshot viewer">
+    <button class="close-btn" id="lbClose" aria-label="Close">×</button>
+    <div class="wrap">
+      <img id="lbImg" alt="">
+      <div class="cap" id="lbCap"></div>
+    </div>
+  </dialog>
+
+  <script>
+    // Footer year
+    document.getElementById('y').textContent = new Date().getFullYear();
+
+    // Sticky topbar: reveal once the big HotSCAD title has scrolled out the top.
+    // The negative top margin makes the title "leave" the intersection root
+    // before it fully clears the viewport, so the bar slides in a touch early.
+    const topNav = document.getElementById('topNav');
+    const heroTitle = document.querySelector('.hero-title-row');
+    if (topNav && heroTitle && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(([entry]) => {
+        topNav.classList.toggle('visible', !entry.isIntersecting);
+      }, { rootMargin: '-60px 0px 0px 0px', threshold: 0 });
+      io.observe(heroTitle);
+    }
+
+    // Lightbox
+    const lb = document.getElementById('lb');
+    const lbImg = document.getElementById('lbImg');
+    const lbCap = document.getElementById('lbCap');
+    const lbClose = document.getElementById('lbClose');
+    document.querySelectorAll('.shot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        const src = slot.dataset.src;
+        const label = slot.dataset.label || '';
+        lbImg.src = src;
+        lbImg.alt = label;
+        lbCap.textContent = label;
+        if (typeof lb.showModal === 'function') lb.showModal();
+        else lb.setAttribute('open', '');
+      });
+    });
+    lbClose.addEventListener('click', () => lb.close());
+    lb.addEventListener('click', (e) => { if (e.target === lb) lb.close(); });
+  </script>
+
+</body>
 </html>

@@ -2,7 +2,7 @@
 
 import { CSSProperties, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ModelContext } from './contexts.ts';
-import { attachCameraController } from './CameraController';
+import { attachCameraController, CameraSettings } from './CameraController';
 import { ViewCube } from './ViewCube';
 import { projectToViewport } from '../io/components.ts';
 import { Toast } from 'primereact/toast';
@@ -23,6 +23,9 @@ export default function ViewerPanel({className, style}: {className?: string, sty
   const state = model.state;
   const modelViewerRef = useRef<any>();
   const toastRef = useRef<Toast>(null);
+  // Stash the entire camera state (orbit + target) across model reloads so a
+  // param edit doesn't move the camera at all — the user expects to keep
+  // looking at exactly what they were looking at, just with new geometry.
   const stashedCameraRef = useRef<{orbit: string; target: string} | null>(null);
 
   const [loadedUri, setLoadedUri] = useState<string | undefined>();
@@ -49,15 +52,25 @@ export default function ViewerPanel({className, style}: {className?: string, sty
 
   const onLoad = useCallback(async (e: any) => {
     setLoadedUri(modelUri);
-    if (stashedCameraRef.current && modelViewerRef.current) {
-      try {
-        modelViewerRef.current.cameraOrbit = stashedCameraRef.current.orbit;
-        modelViewerRef.current.cameraTarget = stashedCameraRef.current.target;
-      } catch {
-        // restoration failed, ignore
-      }
-    }
     if (!modelViewerRef.current) return;
+    const mv = modelViewerRef.current;
+
+    // Re-apply the stashed orbit + target verbatim. New model loads in place;
+    // the camera doesn't move. (On first ever load there's no stash, so we
+    // leave model-viewer's auto-framing alone.)
+    if (stashedCameraRef.current) {
+      try {
+        mv.cameraOrbit = stashedCameraRef.current.orbit;
+        mv.cameraTarget = stashedCameraRef.current.target;
+      } catch { /* ignore */ }
+    }
+
+    // Snap to goal so the user sees what we just set instead of an
+    // intermediate lerp frame. Defer one rAF so the auto-frame (when no stash
+    // exists) has time to materialize into concrete numbers before we snap.
+    requestAnimationFrame(() => {
+      try { mv.jumpCameraToGoal?.(); } catch { /* ignore */ }
+    });
 
     const uri = await modelViewerRef.current.toDataURL('image/png', 0.5);
     const preview = {blurhash: await imageToBlurhash(uri)};
@@ -75,10 +88,26 @@ export default function ViewerPanel({className, style}: {className?: string, sty
   }, [modelViewerRef.current, onLoad]);
 
 
+  // Live camera settings: the controller polls this ref, so changes take effect
+  // immediately without re-attaching all event listeners.
+  const cameraSettingsRef = useRef<CameraSettings>({
+    primaryMouseButton: state.view.primaryMouseButton ?? 'pan',
+    wasdNav: state.view.wasdNav !== false,
+  });
+  useEffect(() => {
+    cameraSettingsRef.current = {
+      primaryMouseButton: state.view.primaryMouseButton ?? 'pan',
+      wasdNav: state.view.wasdNav !== false,
+    };
+  }, [state.view.primaryMouseButton, state.view.wasdNav]);
+
   useEffect(() => {
     const mv = modelViewerRef.current;
     if (!mv) return;
-    const cleanup = attachCameraController(mv, { axesViewerEl: null });
+    const cleanup = attachCameraController(mv, {
+      axesViewerEl: null,
+      getSettings: () => cameraSettingsRef.current,
+    });
     return cleanup;
   }, [modelViewerRef.current]);
 
@@ -87,13 +116,17 @@ export default function ViewerPanel({className, style}: {className?: string, sty
       const el = modelViewerRef.current;
       if (!el) return;
       // Only stash if the previous model actually finished loading. Otherwise we'd
-      // capture model-viewer's pre-load defaults (radius=auto/NaN, target=origin)
-      // and restore them onto the first real model, sending the camera off-screen.
+      // capture pre-load defaults (radius=NaN, target=origin) and restore them
+      // onto the first real model, sending the camera off-screen.
       if (!el.loaded) return;
       try {
+        const o = el.getCameraOrbit();
+        const t = el.getCameraTarget();
+        if (!Number.isFinite(o.theta) || !Number.isFinite(o.phi) || !Number.isFinite(o.radius)) return;
+        if (!Number.isFinite(t.x) || !Number.isFinite(t.y) || !Number.isFinite(t.z)) return;
         stashedCameraRef.current = {
-          orbit: el.getCameraOrbit().toString(),
-          target: el.getCameraTarget().toString(),
+          orbit: o.toString(),
+          target: t.toString(),
         };
       } catch {
         // model-viewer may not be initialized yet
@@ -237,6 +270,35 @@ export default function ViewerPanel({className, style}: {className?: string, sty
         <span slot="progress-bar"></span>
       </model-viewer>
       <ViewCube modelViewerRef={modelViewerRef} onHomeClick={goHome} onFitClick={fitToView} />
+      {state.output?.isEmpty && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 12,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 14px',
+            background: 'rgba(245, 158, 11, 0.16)',
+            border: '1px solid rgba(245, 158, 11, 0.55)',
+            color: 'var(--surface-fg-strong, #f59e0b)',
+            borderRadius: 999,
+            font: '500 12.5px/1.3 Inter, system-ui, sans-serif',
+            letterSpacing: '-0.005em',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            maxWidth: 'calc(100% - 24px)',
+          }}
+          title="The render finished but produced no geometry. The viewer is still showing the last non-empty model."
+        >
+          <i className="pi pi-exclamation-triangle" style={{ fontSize: 13, color: '#f59e0b' }} />
+          <span>Render produced no geometry — showing previous model</span>
+        </div>
+      )}
       {state.view.showDimensions && loaded && labelPositions.map((p, i) => (
         <div
           key={i}

@@ -1,140 +1,146 @@
-# OpenSCAD Playground
+<p align="center">
+  <img src="public/favicon.svg" width="96" alt="HotSCAD" />
+</p>
 
-[Open the Demo](https://ochafik.com/openscad2)
+<h1 align="center">HotSCAD</h1>
 
-<a href="https://ochafik.com/openscad2" target="_blank">
-<img width="694" alt="image" src="https://github.com/user-attachments/assets/58305f27-7e95-4c56-9cd7-0d766e0a21ae" />
-</a>
+<p align="center">
+  <strong>OpenSCAD for agentic CAD design: every save renders.</strong><br>
+  Instant feedback whether Claude is at the keyboard or you are.
+</p>
 
-This is a limited port of [OpenSCAD](https://openscad.org) to WebAssembly, using at its core a headless WASM build of OpenSCAD ([done by @DSchroer](https://github.com/DSchroer/openscad-wasm)), wrapped in a UI made of pretty [PrimeReact](https://github.com/primefaces/primereact) components, a [React Monaco editor](https://github.com/react-monaco-editor/react-monaco-editor) (VS Codesque power!), and an interactive [model-viewer](https://modelviewer.dev/) renderer.
+<p align="center">
+  <a href="https://nicmar.nu/hotscad">▶ Try it live at nicmar.nu/hotscad</a>
+</p>
 
-It defaults to the [Manifold backend](https://github.com/openscad/openscad/pull/4533) so it's **super** fast.
+<p align="center">
+  <!-- Drop the screencap in once recorded: docs/hot-reload.gif -->
+  <img src="docs/hot-reload.gif" alt="Editing a .scad file in VS Code while HotSCAD re-renders on every save" width="720" />
+</p>
 
-Enjoy!
+## What this is
 
-Licenses: see [LICENSES](./LICENSE).
+A fork of [openscad-playground](https://github.com/openscad/openscad-playground)
+by Olivier Chafik (which solved the speed problem by getting OpenSCAD to run
+in the browser via WebAssembly). HotSCAD layers on the UX changes I needed to
+actually live in it day-to-day — most importantly, hot-reload from a file on
+disk so an AI agent (or your editor) can be the one doing the typing.
 
-## Features
+Open a `.scad` file on your computer, edit it in your favorite editor — or
+hand it to Claude, Codex or Gemini — and HotSCAD re-renders the preview the
+moment the file is saved. No copy-paste. No reload. Nothing to install.
 
-- Automatic preview on edit (F5), and full rendering on Ctrl+Enter (or F6). Using a trick to force $preview=true.
-- [Customizer](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Customizer) support
-- Syntax highlighting
-- Ships with many standard SCAD libraries (can browse through them in the UI)
-- Autocomplete of imports
-- Autocomplete of symbols / function calls (pseudo-parses file and its transitive imports)
-- Responsive layout. On small screens editor and viewer are stacked onto each other, while on larger screens they can be side-by-side
-- Installable as a PWA (then persists edits in localStorage instead of the hash fragment). On iOS just open the sharing panel and tap "Add to Home Screen". *Should not* require any internet connectivity once cached.
+> **Your files never leave your computer.** HotSCAD reads the picked file via
+> the browser's File System Access API; nothing is uploaded anywhere. Every
+> render, preview, and customizer value runs locally in your browser tab. The
+> site itself is static; there's no backend to send anything to.
 
-## Roadmap
+## A note before you start agent-coding your CAD
 
-- [x] Add tests!
-- [x] Persist camera state
-- [x] Support 2D somehow? (e.g. add option in OpenSCAD to output 2D geometry as non-closed polysets, or to auto-extrude by some height)
-- [x] Proper Preview rendering: have OpenSCAD export the preview scene to a rich format (e.g. glTF, with some parts being translucent when prefixed w/ % modifier) and display it using https://modelviewer.dev/ maybe)
-- ~~Rebuild w/ (and sync) ochafik@'s filtered kernel (https://github.com/openscad/openscad/pull/4160) to fix(ish) 2D operations~~
-- [x] Bundle more examples (ask users to contribute)
-- Animation rendering (And other formats than STL)
-- [x] Compress URL fragment
-- [x] Mobile (iOS) editing support: switch to https://www.npmjs.com/package/react-codemirror ?
-- [x] Replace Makefile w/ something that reads the libs metadata
-- [ ] Merge modifiers rendering code to openscad
-- Model /home fs in shared state. have two clear paths: /libraries for builtins, and /home for user data. State pointing to /libraries paths needs not store the data except if there's overrides (flagged as modifications in the file picker)
-- Drag and drop of files (SCAD, STL, etc) and Zip archives. For assets, auto insert the corresponding import.
-- Fuller PWA support w/ link Sharing, File opening / association to *.scad files... 
-- Look into accessibility
-- Setup [OPENSCADPATH](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Libraries#Setting_OPENSCADPATH) env var w/ Emscripten to ensure examples that include assets / import local files will run fine.
-- Detect which bundled libraries are included / used in the sources and only download these rather than wait for all of the zips. Means the file explorer would need to be more lazy or have some prebuilt hierarchy.
-- Preparse builtin libraries definitions at compile time, ship the JSON.
+**Results vary, a lot.** Different LLMs handle OpenSCAD with different levels
+of competence, and even the good ones occasionally hand you back something
+that looks nothing like what you asked for. Sometimes a part shows up in
+seconds; sometimes the agent will burn fifteen minutes of back-and-forth
+chasing a single chamfer.
 
-## Building
+If you already know CAD and you're optimizing for speed, this workflow can
+feel frustrating. **If you don't know CAD — or just don't want to learn it —
+but you still want to design and print real things, this is the easiest way
+in.** Describe what you want in plain English, iterate on the result, print
+it. That's the loop HotSCAD is built around.
 
-The project uses a **webpack-based build system** that reads library metadata from `libs-config.json` to automatically download, clone, and package OpenSCAD libraries and dependencies. This replaces the previous Makefile approach with a more standard, maintainable solution.
+## What HotSCAD adds
+
+Grouped by the part of the app it lives in. Only features HotSCAD itself adds
+or meaningfully improves over the upstream playground are listed.
+
+### Getting started
+
+| Feature | What it does |
+|---|---|
+| **Open file, hot reload in the browser** | Click **Open Local…** in the editor toolbar, pick a `.scad` on your machine. HotSCAD watches the file and re-renders every time you save it — from VS Code, Cursor, Sublime, anywhere. Same loop works if Claude / Codex / Gemini is the one doing the editing. |
+| **Sync status indicator** | 🟢 watching · 🟡 manual reload mode (Firefox / Safari) · 🔴 disk differs from editor (one click pulls the latest). |
+| **Dark mode (finally)** | The whole app — editor, viewer, customizer, dialogs — now renders dark by default. Switch to light any time from Settings; HotSCAD remembers your choice and follows your OS preference on Auto. |
+
+### View
+
+| Feature | What it does |
+|---|---|
+| **Camera steady on re-render** | Tweaking a parameter doesn't snap the view back to default. The camera holds its position through every render. |
+| **ViewCube** | Click a face (Front, Top, a corner) to snap to that view. Drag the cube to orbit. Fusion-style. |
+| **Home + Fit** buttons | Home snaps back to a 3/4 view. Fit frames the current model exactly to the panel. |
+| **LMB pan, RMB rotate** | Fusion-style mouse mapping by default. Pan with the primary button, orbit with the secondary, scroll to zoom. Swap in Settings if you prefer otherwise. |
+| **WASD navigation** | Game-style mouse/keyboard. Hold RMB to rotate and aim, press W to move forward. Q/E move down/up. Game-changer for inspecting under a model without manually orbiting around. |
+| **Show dimensions** | A toggle prints bounding-box dimensions next to each component, in millimeters. Useful for checking print volume without opening a slicer. |
+
+### Customize
+
+| Feature | What it does |
+|---|---|
+| **Auto font dropdown** | Any string parameter ending in `font` turns into a dropdown of bundled fonts — Inter Black / SemiBold, Liberation Sans / Serif / Mono, Noto Sans. Still editable for custom font names. |
+| **Filter parameters** | Search box that filters customizer parameters by name. |
+| **Show customized** | Hide every parameter you haven't touched, so the panel only shows what you've actually changed. |
+| **Revert all values** | One click puts every customizer override back to the source defaults. |
+| **Click to nudge, Shift-click for fine** | Click the spinner arrows on a number input to step by `1`; Shift-click (or Shift + arrow keys) to step by `0.1`. |
+| **Layer-colors panel** | Preview how the model looks with filament colors swapped at specific Z heights. Useful for planning a two- or three-color print without going to the slicer. |
+| **Empty-render warning** | When OpenSCAD produces no geometry, the viewer keeps the previous model on screen and shows a pill explaining why nothing changed. |
+
+## Run it locally
+
+You don't need to install anything to use HotSCAD — just
+[open HotSCAD in your browser](https://nicmar.nu/hotscad). But if you want to
+hack on it or run it on your own machine:
 
 Prerequisites:
-*   wget or curl
-*   Node.js (>=18.12.0)
-*   npm
-*   git
-*   zip
-*   Docker able to run amd64 containers (only needed if building WASM from source). If running on a different platform (including Silicon Mac), you can add support for amd64 images through QEMU with:
-
-  ```bash
-  docker run --privileged --rm tonistiigi/binfmt --install all
-  ```
-
-Local dev:
+- Node.js ≥ 18.12
+- npm
+- git
+- `zip` (used during library build)
 
 ```bash
-npm run build:libs  # Download WASM and build all OpenSCAD libraries
+git clone https://github.com/nicmar/hotscad.git
+cd hotscad
+npm run build:libs   # one-time: download OpenSCAD WASM + bundled libraries
 npm install
 npm run start
-# http://localhost:4000/
+# open http://localhost:4000/
 ```
 
-Local prod (test both the different inlining and serving under a prefix):
+For a production-style build:
 
 ```bash
-npm run build:libs  # Download WASM and build all OpenSCAD libraries
-npm install
-npm run start:production
-# http://localhost:3000/dist/
+npm run build:all
 ```
 
-Deployment (edit "homepage" in `package.json` to match your deployment root!):
+## Deploying
+
+Copy `.env.example` to `.env` and edit the deploy target / publish command for
+your setup:
 
 ```bash
-npm run build:all  # Build libraries and compile the application
-npm install
-
-rm -fR ../ochafik.github.io/openscad2 && cp -R dist ../ochafik.github.io/openscad2 
-# Now commit and push changes, wait for site update and enjoy!
+cp .env.example .env
+./deploy.sh
 ```
 
-## Build your own WASM binary
-
-The build system fetches a prebuilt OpenSCAD web WASM binary, but you can build your own in a couple of minutes:
-
-- **Optional**: use your own openscad fork / branch:
-
-  ```bash
-  rm -fR libs/openscad
-  ln -s $PWD/../absolute/path/to/your/openscad libs/openscad
-  
-  # If you had a native build directory, delete it.
-  rm -fR libs/openscad/build
-  ```
-
-- Build WASM binary (add `WASM_BUILD=Debug` argument if you'd like to debug any cryptic crashes):
-
-  ```bash
-  npm run build:libs:wasm
-  ```
-
-- Then continue the build:
-
-  ```bash
-  npm run build:libs
-  npm run start
-  ```
+`deploy.sh` runs the build, copies `dist/` to `$DEPLOY_TARGET`, then runs
+`$DEPLOY_COMMAND` (e.g. an alias that pushes a personal site). With `MIRROR=1`
+it uses `rsync --delete` so the target stays in sync exactly with `dist/`.
 
 ## Adding OpenSCAD libraries
 
-The build system uses a webpack plugin that reads from `libs-config.json` to manage all library dependencies. You'll need to update 3 files (search for BOSL2 for an example):
+The build reads `libs-config.json` to manage every library dependency. To add
+a new library, search for `BOSL2` for a worked example and edit three files:
 
-- [libs-config.json](./libs-config.json): to add the library's metadata including repository URL, branch, and files to include/exclude in the zip archive
+- [`libs-config.json`](./libs-config.json) — repo URL, branch, files to include / exclude
+- [`src/fs/zip-archives.ts`](./src/fs/zip-archives.ts) — wire the zip into the UI file picker and auto-imports
+- [`LICENSE.md`](./LICENSE.md) — paste the library's license, or link to one of the existing standard ones
 
-- [src/fs/zip-archives.ts](./src/fs/zip-archives.ts): to use the `.zip` archive in the UI (both for file explorer and automatic imports mounting)
-
-- [LICENSE.md](./LICENSE.md): most libraries require proper disclosure of their usage and of their license. If a license is unique, paste it in full, otherwise, link to one of the standard ones already there.
-
-### Library Configuration Format
-
-In `libs-config.json`, add an entry like this:
+Library entry format:
 
 ```json
 {
   "name": "LibraryName",
-  "repo": "https://github.com/user/repo.git", 
+  "repo": "https://github.com/user/repo.git",
   "branch": "main",
   "zipIncludes": ["*.scad", "LICENSE", "examples"],
   "zipExcludes": ["**/tests/**"],
@@ -142,10 +148,56 @@ In `libs-config.json`, add an entry like this:
 }
 ```
 
-Available build commands:
-- `npm run build:libs` - Build all libraries
-- `npm run build:libs:clean` - Clean all build artifacts
-- `npm run build:libs:wasm` - Download/build just the WASM binary
-- `npm run build:libs:fonts` - Download/build just the fonts
+Build commands:
 
-Send us a PR, then once it's merged request an update to the hosted https://ochafik.com/openscad2 demo.
+| Command                          | What it does                                 |
+|----------------------------------|----------------------------------------------|
+| `npm run build:libs`             | Build all libraries                          |
+| `npm run build:libs:clean`       | Clean library build artifacts                |
+| `npm run build:libs:wasm`        | Just the WASM binary                         |
+| `npm run build:libs:fonts`       | Just the bundled fonts                       |
+| `npm run build`                  | Production app build                         |
+| `npm run build:all`              | Libraries + app                              |
+
+## Building your own WASM binary
+
+The build pulls a prebuilt OpenSCAD WebAssembly binary. To build your own,
+optionally pointed at your local OpenSCAD checkout:
+
+```bash
+rm -fR libs/openscad
+ln -s $PWD/../absolute/path/to/your/openscad libs/openscad
+rm -fR libs/openscad/build      # if you previously did a native build
+
+npm run build:libs:wasm
+npm run build:libs
+npm run start
+```
+
+Add `WASM_BUILD=Debug` to the env if you need to debug crashes inside WASM.
+
+## About
+
+Made by [@nicmar](https://makerworld.com/en/@nicmar). I'm a newbie 3D-printer
+and CAD designer, but a lifelong tinkerer and maker at heart. If I see a
+problem, I gotta fix it, and if I can 3D-print it, even better.
+
+HotSCAD itself was built with agent assistance — the same agentic coding loop
+the app is designed for.
+
+## Credit
+
+HotSCAD is a fork of [**openscad/openscad-playground**](https://github.com/openscad/openscad-playground)
+by Olivier Chafik. The underlying [OpenSCAD](https://openscad.org) language
+and engine are by Marius Kintel and contributors, the WASM build is based on
+[DSchroer/openscad-wasm](https://github.com/DSchroer/openscad-wasm), and the
+fast geometry backend is [Manifold](https://github.com/elalish/manifold) by
+Emmett Lalish.
+
+If you want to send a PR upstream so a fix lands for everyone, please do —
+the playground accepts contributions at the link above.
+
+## License
+
+GPL v2 or later; deployed under GPL v3 because of dependency licensing. See
+[LICENSE.md](./LICENSE.md) for the full breakdown including bundled libraries.

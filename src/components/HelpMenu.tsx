@@ -1,17 +1,32 @@
 // Portions of this file are Copyright 2021 Google LLC, and licensed under GPL2+. See COPYING.
 
-import { CSSProperties, useRef } from 'react';
+import { CSSProperties, useContext, useRef } from 'react';
 import { Button } from 'primereact/button';
 import { MenuItem } from 'primereact/menuitem';
 import { Menu } from 'primereact/menu';
+import { ModelContext } from './contexts.ts';
 
 export default function HelpMenu({className, style}: {className?: string, style?: CSSProperties}) {
   const menuRef = useRef<Menu>(null);
+  const model = useContext(ModelContext);
+  if (!model) throw new Error('No model');
   return (
     <>
       <Menu style={style} className={className}  model={[
         {
-          label: "openscad-playground",
+          label: 'Quick Start',
+          icon: 'pi pi-bolt',
+          command: () => model.mutate(s => { s.quickStartOpen = true; }),
+        },
+        { separator: true },
+        {
+          label: 'HotSCAD on GitHub',
+          icon: 'pi pi-github',
+          url: 'https://github.com/nicmar/hotscad',
+          target: '_blank'
+        },
+        {
+          label: 'Upstream: openscad-playground',
           icon: 'pi pi-github',
           url: 'https://github.com/openscad/openscad-playground/',
           target: '_blank'

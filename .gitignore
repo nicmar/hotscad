@@ -7,3 +7,7 @@ public/openscad.wasm
 src/wasm
 package-lock.json
 .DS_Store
+.env
+.env.local
+.playwright*
+.idea

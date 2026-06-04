@@ -5,9 +5,9 @@ import {MultiLayoutComponentId, State, StatePersister} from '../state/app-state'
 import { Model } from '../state/model';
 import EditorPanel from './EditorPanel';
 import ViewerPanel from './ViewerPanel';
-import Footer from './Footer';
 import { ModelContext, FSContext } from './contexts';
 import PanelSwitcher from './PanelSwitcher';
+import QuickStart from './QuickStart';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import RightPanel from './RightPanel';
 import { Splitter, SplitterPanel } from 'primereact/splitter';
@@ -130,8 +130,8 @@ export function App({initialState, statePersister, fs}: {initialState: State, st
             </div>
           )}
 
-          <Footer />
           <ConfirmDialog />
+          <QuickStart />
         </div>
       </FSContext.Provider>
     </ModelContext.Provider>
