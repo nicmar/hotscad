@@ -178,9 +178,12 @@ Add `WASM_BUILD=Debug` to the env if you need to debug crashes inside WASM.
 
 ## About
 
-Made by [@nicmar](https://makerworld.com/en/@nicmar). I'm a newbie 3D-printer
-and CAD designer, but a lifelong tinkerer and maker at heart. If I see a
-problem, I gotta fix it, and if I can 3D-print it, even better.
+Made by @nicmar with Claude Code. Check out my
+[profile on MakerWorld](https://makerworld.com/en/@nicmar).
+
+I'm a newbie 3D-printer and CAD designer, but a lifelong tinkerer and maker
+at heart. If I see a problem, I gotta fix it, and if I can 3D-print it, even
+better.
 
 HotSCAD itself was built with agent assistance — the same agentic coding loop
 the app is designed for.

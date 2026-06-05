@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HotSCAD — OpenSCAD for agentic CAD design</title>
-  <meta name="description" content="HotSCAD is OpenSCAD built for agentic  CAD design: every save renders. Hand the .scad file to Claude, Codex or Gemini — or type it yourself — and the preview updates instantly. Files never leave your computer.">
+  <title>HotSCAD - OpenSCAD for agentic CAD design</title>
+  <meta name="description" content="HotSCAD is OpenSCAD built for agentic  CAD design: every save renders. Hand the .scad file to Claude, Codex or Gemini - or type it yourself — and the preview updates instantly. Files never leave your computer.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <meta name="theme-color" content="#0d0c0b">
 
-  <meta property="og:title" content="HotSCAD — OpenSCAD built for agentic coding">
+  <meta property="og:title" content="HotSCAD - OpenSCAD built for agentic coding">
   <meta property="og:description" content="Every save renders. Same instant feedback whether Claude is at the keyboard or you are.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://nicmar.nu/hotscad/">
@@ -775,8 +775,8 @@
       </div>
       <p class="tagline">OpenSCAD for agentic CAD design: every save renders. Instant feedback whether Claude is at the keyboard or you are.</p>
       <p class="lede">
-        Open a <span class="mono">.scad</span> file on your computer, edit it in your favorite editor &mdash;
-        or hand it to Claude, Codex or Gemini &mdash; and HotSCAD re-renders the preview the moment the file is saved.
+        Open a <span class="mono">.scad</span> file on your computer, edit it in your favorite editor
+        or hand it to Claude, Codex or Gemini and HotSCAD re-renders the preview the moment the file is saved.
         No copy-paste. No reload. Nothing to install.
       </p>
       <div class="cta-row">
@@ -819,7 +819,7 @@
       </div>
       <div>
         <h3>Your files never leave your computer.</h3>
-        <p>HotSCAD reads the file you pick using the browser's File System Access API. Nothing is uploaded anywhere &mdash; every render, every preview, every customizer value runs locally in your browser tab. The site itself is static; there's no backend to send anything to.</p>
+        <p>HotSCAD reads the file you pick using the browser's File System Access API. Nothing is uploaded anywhere. Every render, every preview, every customizer value runs locally in your browser. The site itself is static, there's no backend to send anything to.</p>
       </div>
     </div>
 
@@ -841,12 +841,12 @@
 
       <div class="feature">
         <div class="fbox">
-          <h3>Open file — hot reload in the browser</h3>
-          <p>Click <strong>Open Local…</strong> in the editor toolbar and pick a <span class="mono">.scad</span> on your computer. HotSCAD watches the file and re-renders every time you save it &mdash; from VS Code, Cursor, Sublime, anywhere. Same loop works if Claude / Codex / Gemini is the one doing the editing.</p>
+          <h3>Open a file with hot reload in the browser</h3>
+          <p>Click <strong>Open Local…</strong> in the editor toolbar and pick a <span class="mono">.scad</span> on your computer. HotSCAD watches the file and re-renders every time you save it, so it's easy to let Claude / Codex / Gemini do the editing.</p>
           <div class="legend" aria-label="Sync status indicator">
             <div class="lr"><span class="d green"></span>Watching, in sync</div>
             <div class="lr"><span class="d amber"></span>Manual reload mode (Firefox / Safari)</div>
-            <div class="lr"><span class="d red"></span>Editor differs from disk &mdash; one click pulls latest</div>
+            <div class="lr"><span class="d red"></span>Editor differs from disk - click reload to pull latest</div>
           </div>
         </div>
         <button class="shot" type="button" data-src="screenshots/hot-reload.png" data-label="Hot reload">
@@ -857,7 +857,7 @@
       <div class="feature">
         <div class="fbox">
           <h3>Dark mode (finally)</h3>
-          <p>The whole app — editor, viewer, customizer, dialogs — now renders dark by default. Switch to light any time from Settings; HotSCAD remembers your choice and follows your OS preference if you leave it on Auto.</p>
+          <p>The whole app now renders dark by default. Switch to light any time from Settings; HotSCAD remembers your choice and follows your OS preference if you leave it on Auto.</p>
         </div>
         <button class="shot" type="button" data-src="screenshots/dark-mode.png" data-label="Dark mode">
           <span class="ph"><span class="label">Screenshot</span><span>dark mode</span><span class="filename">screenshots/dark-mode.png</span></span>
@@ -883,6 +883,16 @@
 
       <div class="feature">
         <div class="fbox">
+          <h3>Empty-render warning</h3>
+          <p>When the source compiles but produces no geometry, <span class="mono">Current top level object is empty</span> is shown in the Console (which is hidden by default) but the viewer keeps the previous model on screen and shows a warning at the top explaining why nothing changed.</p>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/empty-render-pill.png" data-label="Empty-render warning pill">
+          <span class="ph"><span class="label">Screenshot</span><span>empty-render pill</span><span class="filename">screenshots/empty-render-pill.png</span></span>
+        </button>
+      </div>
+
+      <div class="feature">
+        <div class="fbox">
           <h3>ViewCube</h3>
           <p>Click a face (Front, Top, a corner) to snap to that view. Drag the cube to orbit. Same as Fusion.</p>
           <p>Two buttons. Home snaps back to a 3/4 view. Fit frames the current model exactly to the panel.</p>
@@ -895,9 +905,9 @@
 
       <div class="feature">
         <div class="fbox">
-          <h3>LMB pan, RMB rotate and Dark mode!</h3>
+          <h3>LMB pan, RMB rotate (and more in Settings)</h3>
           <p>Fusion-style mouse mapping by default. Pan with the primary mouse button, orbit with the secondary. Scroll to zoom.</p>
-          <p>In Settings you can switch that and you'll also find more settings, like debounce that sets how quickly it re-renders when you change parameters.</p>
+          <p>In Settings you can swap the mapping and tweak other things like the debounce that sets how quickly the model re-renders while you're changing parameters.</p>
         </div>
         <button class="shot" type="button" data-src="screenshots/mouse-controls.png" data-label="Mouse controls">
           <span class="ph"><span class="label">Screenshot</span><span>mouse controls</span><span class="filename">screenshots/mouse-controls.png</span></span>
@@ -910,8 +920,8 @@
           <p>Game-style mouse/keyboard navigation. Hold RMB to rotate and aim where you want to go, and press W to move forward.</p>
           <p>Pressing Q and E moves down and up.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/mouse-controls.png" data-label="Mouse controls">
-          <span class="ph"><span class="label">Screenshot</span><span>mouse controls</span><span class="filename">screenshots/mouse-controls.png</span></span>
+        <button class="shot" type="button" data-src="screenshots/wasd-nav.png" data-label="WASD navigation">
+          <span class="ph"><span class="label">Screenshot</span><span>WASD navigation</span><span class="filename">screenshots/wasd-nav.png</span></span>
         </button>
       </div>
 
