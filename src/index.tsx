@@ -65,6 +65,30 @@ declare var BrowserFS: BrowserFSInterface
 
 
 window.addEventListener('load', async () => {
+  // Small build-stamp in the corner so you can verify which version is live.
+  // Bumped via `npm version <patch|minor|major>` or by editing package.json.
+  const version = process.env.HOTSCAD_VERSION;
+  if (version) {
+    const badge = document.createElement('div');
+    badge.id = 'hotscad-version';
+    badge.textContent = `v${version}`;
+    badge.title = `HotSCAD v${version}`;
+    badge.style.cssText = [
+      'position:fixed',
+      'bottom:4px',
+      'right:6px',
+      'font-family:ui-monospace,SFMono-Regular,Menlo,monospace',
+      'font-size:10px',
+      'letter-spacing:0.04em',
+      'color:#807767',
+      'opacity:0.45',
+      'pointer-events:none',
+      'user-select:none',
+      'z-index:99999',
+    ].join(';');
+    document.body.appendChild(badge);
+  }
+
   //*
   if (process.env.NODE_ENV === 'production') {
     if ('serviceWorker' in navigator) {

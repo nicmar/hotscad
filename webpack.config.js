@@ -2,6 +2,7 @@ import CopyPlugin from 'copy-webpack-plugin';
 import webpack from 'webpack';
 import WorkboxPlugin from 'workbox-webpack-plugin';
 
+import { readFileSync } from 'fs';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -9,6 +10,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
+const HOTSCAD_VERSION = pkg.version;
 
 
 /** @type {import('webpack').Configuration[]} */
@@ -86,6 +90,9 @@ const config = [
     plugins: [
       new webpack.EnvironmentPlugin({
         'process.env.NODE_ENV': 'development',
+      }),
+      new webpack.DefinePlugin({
+        'process.env.HOTSCAD_VERSION': JSON.stringify(HOTSCAD_VERSION),
       }),
       ...(process.env.NODE_ENV === 'production' ? [
         new WorkboxPlugin.GenerateSW({
