@@ -23,7 +23,9 @@ function collectObjectEntriesDeeply(o: KVObject, out: KVEntriesMap = new Map()):
   const entries = [...Object.entries(o)];
   out.set(o, entries);
   for (const [, v] of entries) {
-    if (typeof v !== 'object') {
+    // typeof null === 'object' in JS, so we must guard against it explicitly
+    // before recursing — otherwise Object.entries(null) throws.
+    if (v == null || typeof v !== 'object') {
       continue;
     }
     if (v instanceof RegExp ||

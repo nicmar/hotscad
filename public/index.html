@@ -238,17 +238,17 @@
       font-size: clamp(20px, 2.6vw, 28px);
       line-height: 1.35;
       color: var(--ink);
-      max-width: 720px;
+      max-width: 950px;
       margin: 0 0 22px;
       font-weight: 500;
       letter-spacing: -0.015em;
     }
     .lede {
-      max-width: 580px;
+      max-width: 850px;
       font-size: 16px;
       line-height: 1.65;
       color: var(--ink-muted);
-      margin: 0 0 36px;
+      margin: 0 0 24px;
     }
     .cta-row {
       display: flex;
@@ -343,6 +343,51 @@
       justify-content: center;
       box-shadow: 0 8px 24px -8px rgba(255, 90, 31, 0.5);
     }
+    /* Big centered play button overlay for the hero video */
+    .video-slot::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.42) 100%);
+      z-index: 2;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    .video-slot .big-play {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: clamp(72px, 9vw, 104px);
+      height: clamp(72px, 9vw, 104px);
+      border: 0;
+      border-radius: 999px;
+      background: var(--hot);
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 18px 40px -10px rgba(255, 90, 31, 0.55),
+                  0 0 0 14px rgba(255, 255, 255, 0.06);
+      z-index: 3;
+      transition: opacity .25s ease, transform .2s ease, background .2s;
+    }
+    .video-slot .big-play svg { margin-left: 6px; }
+    .video-slot .big-play:hover {
+      background: var(--hot-deep);
+      transform: translate(-50%, -50%) scale(1.05);
+    }
+    .video-slot .big-play:focus-visible {
+      outline: 3px solid #fff;
+      outline-offset: 4px;
+    }
+    .video-slot.is-playing::before { opacity: 0; }
+    .video-slot.is-playing .big-play {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.85);
+    }
 
     /* --------------------------------------- privacy callout */
     .privacy {
@@ -379,7 +424,7 @@
     }
 
     /* --------------------------------------- sections */
-    section { padding: 64px 0; position: relative; }
+    section { padding: 88px 0; position: relative; }
     section + section { border-top: 1px solid var(--hair); }
     h2 {
       font-weight: 700;
@@ -409,9 +454,12 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
       gap: 22px;
-      margin-bottom: 22px;
+      margin-bottom: 56px;
     }
-    @media (max-width: 760px) { .feature { grid-template-columns: 1fr; } }
+    .feature:last-child { margin-bottom: 0; }
+    @media (max-width: 760px) {
+      .feature { grid-template-columns: 1fr; margin-bottom: 40px; }
+    }
 
     .fbox {
       padding: 28px 28px;
@@ -475,15 +523,48 @@
       align-items: center;
       justify-content: center;
       transition: border-color .2s, transform .2s;
+      padding: 0;
     }
     .shot:hover { border-color: var(--hair-strong); transform: translateY(-1px); }
     .shot:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
-    .shot img {
+    .shot img,
+    .shot video {
       display: block;
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
+    .shot.shot-video { cursor: pointer; }
+    .shot.shot-video::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(0,0,0,0.55) 0 30px, transparent 31px),
+        linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.25) 100%);
+      opacity: 1;
+      transition: opacity .25s ease;
+      pointer-events: none;
+    }
+    .shot.shot-video::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      transform: translate(-30%, -50%);
+      border-left: 14px solid #fff;
+      border-top: 9px solid transparent;
+      border-bottom: 9px solid transparent;
+      opacity: 0.95;
+      transition: opacity .25s ease;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .shot.shot-video.is-playing::after,
+    .shot.shot-video.is-playing::before { opacity: 0; }
+    .shot.shot-video.is-playing { border-color: var(--hot); }
     .shot .ph {
       position: absolute;
       inset: 0;
@@ -773,7 +854,7 @@
         </svg>
         <h1 class="hero-title"><span class="accent">Hot</span><span class="light">SCAD</span></h1>
       </div>
-      <p class="tagline">OpenSCAD for agentic CAD design: every save renders. Instant feedback whether Claude is at the keyboard or you are.</p>
+      <p class="tagline">OpenSCAD for agentic CAD design: every save renders.<br> Instant feedback whether Claude is at the keyboard or you are.</p>
       <p class="lede">
         Open a <span class="mono">.scad</span> file on your computer, edit it in your favorite editor
         or hand it to Claude, Codex or Gemini and HotSCAD re-renders the preview the moment the file is saved.
@@ -792,21 +873,10 @@
 
     <!-- =========================================================== VIDEO -->
     <div class="video-slot" id="videoSlot" aria-label="HotSCAD demo video">
-      <!-- Drop your video here. Either uncomment the <video> tag and provide a file,
-           or replace with a YouTube/Vimeo <iframe>. Leaving the placeholder visible
-           until then. -->
-      <!--
-      <video controls playsinline preload="metadata" poster="screenshots/video-poster.jpg">
-        <source src="hotscad-demo.mp4" type="video/mp4">
-      </video>
-      -->
-      <div class="video-ph">
-        <span class="play" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </span>
-        <span class="label">Demo video</span>
-        <span class="filename">hotscad-demo.mp4 / YouTube embed</span>
-      </div>
+      <video src="videos/demo-video-hotscad.mp4" controls playsinline preload="metadata"></video>
+      <button class="big-play" type="button" aria-label="Play demo video">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
     </div>
 
     <!-- =========================================================== PRIVACY -->
@@ -849,9 +919,9 @@
             <div class="lr"><span class="d red"></span>Editor differs from disk - click reload to pull latest</div>
           </div>
         </div>
-        <button class="shot" type="button" data-src="screenshots/hot-reload.png" data-label="Hot reload">
-          <span class="ph"><span class="label">Screenshot</span><span>hot reload</span><span class="filename">screenshots/hot-reload.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Hot reload demo">
+          <video src="videos/hot-reload.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
@@ -859,9 +929,9 @@
           <h3>Dark mode (finally)</h3>
           <p>The whole app now renders dark by default. Switch to light any time from Settings; HotSCAD remembers your choice and follows your OS preference if you leave it on Auto.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/dark-mode.png" data-label="Dark mode">
-          <span class="ph"><span class="label">Screenshot</span><span>dark mode</span><span class="filename">screenshots/dark-mode.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Dark mode demo">
+          <video src="videos/dark-mode.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
     </section>
@@ -876,19 +946,9 @@
           <h3>Camera steady on re-render</h3>
           <p>Tweaking a parameter doesn't snap the view back to default. The camera holds its position through every render, so iterating on small details actually works.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/camera-survives.png" data-label="Camera survives edits">
-          <span class="ph"><span class="label">Screenshot</span><span>camera survives edits</span><span class="filename">screenshots/camera-survives.png</span></span>
-        </button>
-      </div>
-
-      <div class="feature">
-        <div class="fbox">
-          <h3>Empty-render warning</h3>
-          <p>When the source compiles but produces no geometry, <span class="mono">Current top level object is empty</span> is shown in the Console (which is hidden by default) but the viewer keeps the previous model on screen and shows a warning at the top explaining why nothing changed.</p>
+        <div class="shot shot-video" aria-label="Camera steady on re-render demo">
+          <video src="videos/camera-survives.mp4" muted loop playsinline preload="metadata"></video>
         </div>
-        <button class="shot" type="button" data-src="screenshots/empty-render-pill.png" data-label="Empty-render warning pill">
-          <span class="ph"><span class="label">Screenshot</span><span>empty-render pill</span><span class="filename">screenshots/empty-render-pill.png</span></span>
-        </button>
       </div>
 
       <div class="feature">
@@ -897,9 +957,9 @@
           <p>Click a face (Front, Top, a corner) to snap to that view. Drag the cube to orbit. Same as Fusion.</p>
           <p>Two buttons. Home snaps back to a 3/4 view. Fit frames the current model exactly to the panel.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/viewcube.png" data-label="ViewCube">
-          <span class="ph"><span class="label">Screenshot</span><span>ViewCube</span><span class="filename">screenshots/viewcube.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="ViewCube demo">
+          <video src="videos/viewcube.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
 
@@ -909,9 +969,9 @@
           <p>Fusion-style mouse mapping by default. Pan with the primary mouse button, orbit with the secondary. Scroll to zoom.</p>
           <p>In Settings you can swap the mapping and tweak other things like the debounce that sets how quickly the model re-renders while you're changing parameters.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/mouse-controls.png" data-label="Mouse controls">
-          <span class="ph"><span class="label">Screenshot</span><span>mouse controls</span><span class="filename">screenshots/mouse-controls.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Mouse controls demo">
+          <video src="videos/mouse-controls.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
@@ -920,9 +980,9 @@
           <p>Game-style mouse/keyboard navigation. Hold RMB to rotate and aim where you want to go, and press W to move forward.</p>
           <p>Pressing Q and E moves down and up.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/wasd-nav.png" data-label="WASD navigation">
-          <span class="ph"><span class="label">Screenshot</span><span>WASD navigation</span><span class="filename">screenshots/wasd-nav.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="WASD navigation demo">
+          <video src="videos/wasd-nav.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
@@ -930,9 +990,9 @@
           <h3>Show dimensions</h3>
           <p>A toggle prints the bounding-box dimensions next to each component, in millimeters. Useful for checking print volume without opening a slicer.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/dimensions.png" data-label="Show dimensions">
-          <span class="ph"><span class="label">Screenshot</span><span>dimensions</span><span class="filename">screenshots/dimensions.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Show dimensions demo">
+          <video src="videos/dimensions.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
     </section>
 
@@ -946,9 +1006,9 @@
           <h3>Auto font dropdown</h3>
           <p>Any string parameter ending in <span class="mono">font</span> turns into a dropdown of bundled fonts &mdash; Inter Black / SemiBold, Liberation Sans / Serif / Mono, Noto Sans. You can still type a custom font name; the dropdown is editable.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/font-dropdown.png" data-label="Auto font dropdown">
-          <span class="ph"><span class="label">Screenshot</span><span>font dropdown</span><span class="filename">screenshots/font-dropdown.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Auto font dropdown demo">
+          <video src="videos/font-dropdown.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
@@ -961,9 +1021,9 @@
           <li><p><b>Show Customized</b> - Hide all parameters you haven't changed, easier to focus</p>
           </ul>
         </div>
-        <button class="shot" type="button" data-src="screenshots/revert-all.png" data-label="Revert all values">
-          <span class="ph"><span class="label">Screenshot</span><span>revert all</span><span class="filename">screenshots/revert-all.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Quick parameter settings demo">
+          <video src="videos/revert-all.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
@@ -971,19 +1031,20 @@
           <h3>Click to nudge, Shift-click for fine</h3>
           <p>Every number input has spinner arrows. <strong>Click</strong> to step the value by <span class="mono">1</span>; <strong>Shift-click</strong> (or hold Shift and use the arrow keys) to step by <span class="mono">0.1</span>. Faster than dragging a slider when you know roughly where you're going.</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/shift-step.png" data-label="Shift-click for 0.1 steps">
-          <span class="ph"><span class="label">Screenshot</span><span>shift-click stepping</span><span class="filename">screenshots/shift-step.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Shift-click for 0.1 steps demo">
+          <video src="videos/shift-step.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
 
       <div class="feature">
         <div class="fbox">
           <h3>Layer-colors panel</h3>
           <p>Preview how the model looks with filament colors swapped at specific Z heights. Useful for planning a two- or three-color print without going to the slicer.</p>
+          <p>NOTE: This only works on more detailed models, as it needs polygons to work. But I used ot</p>
         </div>
-        <button class="shot" type="button" data-src="screenshots/layer-colors.png" data-label="Layer colors panel">
-          <span class="ph"><span class="label">Screenshot</span><span>layer colors</span><span class="filename">screenshots/layer-colors.png</span></span>
-        </button>
+        <div class="shot shot-video" aria-label="Layer-colors panel demo">
+          <video src="videos/layer-colors.mp4" muted loop playsinline preload="metadata"></video>
+        </div>
       </div>
     </section>
 
@@ -1068,7 +1129,7 @@
         <div class="about-text">
           <h3>About me</h3>
           <p>
-            I'm a newbie 3D-printer and CAD designer, but a lifelong tinkerer and maker at heart.
+            I'm nicmar, a newbie 3D-printer and CAD designer, but a lifelong tinkerer and maker at heart.
             If I see a problem, I gotta fix it, and if I can 3D-print it, even better! 😅
           </p>
           <a class="makerworld" href="https://makerworld.com/en/@nicmar" target="_blank" rel="noreferrer">
@@ -1126,12 +1187,12 @@
       io.observe(heroTitle);
     }
 
-    // Lightbox
+    // Lightbox (image screenshots only; videos use their own behavior)
     const lb = document.getElementById('lb');
     const lbImg = document.getElementById('lbImg');
     const lbCap = document.getElementById('lbCap');
     const lbClose = document.getElementById('lbClose');
-    document.querySelectorAll('.shot').forEach(slot => {
+    document.querySelectorAll('.shot[data-src]').forEach(slot => {
       slot.addEventListener('click', () => {
         const src = slot.dataset.src;
         const label = slot.dataset.label || '';
@@ -1144,6 +1205,98 @@
     });
     lbClose.addEventListener('click', () => lb.close());
     lb.addEventListener('click', (e) => { if (e.target === lb) lb.close(); });
+
+    // Demo videos: only one plays at a time.
+    // Hover-capable devices: play the video on the row the mouse is over.
+    // Touch / no-hover: fall back to playing the most-visible video on scroll.
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const canHover = window.matchMedia && window.matchMedia('(hover: hover)').matches;
+    const videoSlots = document.querySelectorAll('.shot-video');
+
+    // Hero video: big play button toggles playback; native controls still work.
+    // The slot's .is-playing class drives the overlay fade.
+    const heroSlot = document.getElementById('videoSlot');
+    if (heroSlot) {
+      const heroVideo = heroSlot.querySelector('video');
+      const bigPlay = heroSlot.querySelector('.big-play');
+      if (heroVideo && bigPlay) {
+        bigPlay.addEventListener('click', () => {
+          const p = heroVideo.play();
+          if (p && typeof p.catch === 'function') {
+            p.catch(err => console.warn('[hotscad] hero video.play() rejected:', err));
+          }
+        });
+        heroVideo.addEventListener('play',  () => heroSlot.classList.add('is-playing'));
+        heroVideo.addEventListener('pause', () => heroSlot.classList.remove('is-playing'));
+        heroVideo.addEventListener('ended', () => heroSlot.classList.remove('is-playing'));
+      }
+    }
+
+    const playOnly = (slot) => {
+      videoSlots.forEach(s => {
+        const v = s.querySelector('video');
+        if (!v) return;
+        if (s === slot) {
+          v.muted = true; // some browsers need this set in JS, not just attribute
+          const p = v.play();
+          if (p && typeof p.catch === 'function') {
+            p.catch(err => console.warn('[hotscad] video.play() rejected:', v.src, err));
+          }
+          s.classList.add('is-playing');
+        } else {
+          v.pause();
+          s.classList.remove('is-playing');
+        }
+      });
+    };
+    const pauseAll = () => {
+      videoSlots.forEach(s => {
+        const v = s.querySelector('video');
+        if (v) v.pause();
+        s.classList.remove('is-playing');
+      });
+    };
+
+    if (videoSlots.length) {
+      // Defensive: force these in JS in case attributes weren't honored.
+      videoSlots.forEach(slot => {
+        const v = slot.querySelector('video');
+        if (v) { v.muted = true; v.playsInline = true; v.loop = true; }
+      });
+
+      if (canHover) {
+        // Hover/click is user-initiated, so it's fine to bind even when the
+        // user has "Reduce motion" turned on. We only skip the auto-play-on-
+        // scroll fallback in that case.
+        // Bind on the whole .feature row so hovering the text counts too.
+        videoSlots.forEach((slot) => {
+          const row = slot.closest('.feature') || slot;
+          row.addEventListener('mouseenter', () => playOnly(slot));
+          row.addEventListener('mouseleave', () => pauseAll());
+          slot.addEventListener('click', () => {
+            const v = slot.querySelector('video');
+            if (!v) return;
+            if (v.paused) playOnly(slot); else pauseAll();
+          });
+        });
+      } else if (!reduceMotion && 'IntersectionObserver' in window) {
+        // Touch fallback: pick the most-visible video and play just that one.
+        const ratios = new Map();
+        const pickAndPlay = () => {
+          let best = null;
+          let bestRatio = 0.4; // require at least 40% visible
+          ratios.forEach((ratio, slot) => {
+            if (ratio > bestRatio) { bestRatio = ratio; best = slot; }
+          });
+          if (best) playOnly(best); else pauseAll();
+        };
+        const vio = new IntersectionObserver((entries) => {
+          entries.forEach(e => ratios.set(e.target, e.intersectionRatio));
+          pickAndPlay();
+        }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+        videoSlots.forEach(slot => vio.observe(slot));
+      }
+    }
   </script>
 
 </body>

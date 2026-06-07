@@ -112,7 +112,8 @@ export function attachCameraController(
   let lastPinchDist = 0;
 
   // Keys currently held for WASD/QE walk-mode (active only while a mouse-rotate
-  // gesture is in progress).
+  // gesture is in progress — Unity scene-view convention: hold the rotate
+  // button to fly).
   const heldKeys = new Set<string>();
   let lastFrameTs = 0;
 
@@ -169,8 +170,33 @@ export function attachCameraController(
 
   function rotate(dx: number, dy: number) {
     const orbit = el.getCameraOrbit();
-    const sens = 0.04;
-    updateOrbit(orbit.theta - dx * sens, orbit.phi - dy * sens, orbit.radius);
+    // Unity scene-view feels around 0.005 rad/pixel for RMB look.
+    const sens = readSettings().wasdNav ? 0.005 : 0.02;
+    const newTheta = orbit.theta - dx * sens;
+    const newPhi = clampPhi(orbit.phi - dy * sens);
+
+    if (readSettings().wasdNav) {
+      // Free-look (FPS-style): pivot is the camera itself, not the target.
+      // model-viewer computes camera position from target + sphericalOffset, so
+      // to rotate the camera in place we change the angles AND move target so
+      // the resulting camera position is identical to before.
+      //   camera = target + (sin φ · sin θ, cos φ, sin φ · cos θ) · radius
+      const target = el.getCameraTarget();
+      const sp0 = Math.sin(orbit.phi),   cp0 = Math.cos(orbit.phi);
+      const st0 = Math.sin(orbit.theta), ct0 = Math.cos(orbit.theta);
+      const camX = target.x + sp0 * st0 * orbit.radius;
+      const camY = target.y + cp0       * orbit.radius;
+      const camZ = target.z + sp0 * ct0 * orbit.radius;
+
+      const sp1 = Math.sin(newPhi),   cp1 = Math.cos(newPhi);
+      const st1 = Math.sin(newTheta), ct1 = Math.cos(newTheta);
+      updateTarget(
+        camX - sp1 * st1 * orbit.radius,
+        camY - cp1       * orbit.radius,
+        camZ - sp1 * ct1 * orbit.radius,
+      );
+    }
+    updateOrbit(newTheta, newPhi, orbit.radius);
   }
 
   function pan(dx: number, dy: number) {
@@ -326,8 +352,8 @@ export function attachCameraController(
     e.preventDefault();
   };
 
-  // WASD/QE work only while the rotate mouse button is being held. Listening on
-  // window so the focus state doesn't matter while the user is dragging.
+  // WASD/QE work only while the rotate mouse button is held — Unity scene-view
+  // fly mode. Listening on window so focus state doesn't matter mid-drag.
   const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e']);
   const onKeyDown = (e: KeyboardEvent) => {
     if (!readSettings().wasdNav) return;

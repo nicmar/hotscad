@@ -12,6 +12,28 @@ import './index.css';
 
 import debug from 'debug';
 import { isInStandaloneMode, registerCustomAppHeightCSSProperty } from './utils.ts';
+
+// Swallow benign ResizeObserver loop notifications before webpack-dev-server's
+// overlay surfaces them as runtime errors. The browser emits these when a
+// ResizeObserver callback triggers another layout in the same frame; nothing
+// is actually broken. Capture-phase listener so we run before the overlay's.
+const RESIZE_OBSERVER_MESSAGES = [
+  'ResizeObserver loop completed with undelivered notifications.',
+  'ResizeObserver loop limit exceeded',
+];
+window.addEventListener('error', (e) => {
+  if (e.message && RESIZE_OBSERVER_MESSAGES.some(m => e.message.includes(m))) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = (e.reason && (e.reason.message ?? String(e.reason))) || '';
+  if (RESIZE_OBSERVER_MESSAGES.some(m => msg.includes(m))) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
 import { State, StatePersister } from './state/app-state.ts';
 import { writeStateInFragment } from "./state/fragment-state.ts";
 

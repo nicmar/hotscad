@@ -66,6 +66,22 @@ const config = [
       static: path.join(__dirname, 'dist'),
       compress: true,
       port: 4000,
+      client: {
+        overlay: {
+          errors: true,
+          warnings: false,
+          // Filter benign browser-emitted errors that don't indicate any real
+          // problem. The ResizeObserver loop notification fires when a RO
+          // callback triggers another layout in the same frame (PrimeReact /
+          // Monaco do this routinely); the browser already recovered.
+          runtimeErrors: (error) => {
+            const msg = (error && (error.message ?? String(error))) || '';
+            if (msg.includes('ResizeObserver loop completed with undelivered notifications')) return false;
+            if (msg.includes('ResizeObserver loop limit exceeded')) return false;
+            return true;
+          },
+        },
+      },
     },
     plugins: [
       new webpack.EnvironmentPlugin({

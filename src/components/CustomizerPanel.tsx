@@ -250,6 +250,10 @@ export default function CustomizerPanel({className, style}: {className?: string,
   const state = model.state;
 
   const handleChange = (name: string, value: any) => {
+    // PrimeReact InputNumber emits null for intermediate/invalid input
+    // (lone "-", cleared field). Persisting null pollutes state.params.vars
+    // and breaks deep-mutate traversal.
+    if (value === null) return;
     model.setVar(name, value);
   };
 
@@ -618,6 +622,7 @@ function ParameterInput({param, value, className, style, shiftHeld, handleChange
                   maxFractionDigits={6}
                   useGrouping={false}
                   onValueChange={(e) => {
+                    if (e.value === null) return;
                     const newArray = [...(value ?? param.initial)];
                     newArray[index] = e.value;
                     handleChange(param.name, newArray);
