@@ -1,10 +1,16 @@
-import React, { CSSProperties, useContext, useMemo, useRef } from 'react';
+import React, { CSSProperties, useContext, useMemo, useRef, useState } from 'react';
 import { ModelContext } from './contexts';
 import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
 import { Fieldset } from 'primereact/fieldset';
 import { Slider } from 'primereact/slider';
+import { Dialog } from 'primereact/dialog';
 import type { LayerSpan } from '../state/app-state';
+import {
+  formatLayerColorsForSource,
+  layerColorsEqual,
+  parseLayerColorsFromSource,
+} from '../io/layer_colors_source';
 
 const DEFAULT_PALETTE = ['#ffffff', '#22c55e', '#ef4444', '#3b82f6', '#f59e0b', '#a855f7', '#111827'];
 
@@ -14,6 +20,20 @@ function sortedByFrom(layers: LayerSpan[]): LayerSpan[] {
 
 function sortedOriginalIndices(layers: LayerSpan[]): number[] {
   return layers.map((_, i) => i).sort((a, b) => layers[a].from - layers[b].from);
+}
+
+// A "base" layer is one pinned at the object's bottom; the panel surfaces it
+// as a dedicated picker rather than a draggable threshold. Tiny epsilon so
+// floating-point drift from drag rounding doesn't accidentally demote it.
+const BASE_EPSILON = 0.005;
+function findBaseLayerIndex(layers: LayerSpan[], zMin: number): number {
+  let bestIdx = -1;
+  for (let i = 0; i < layers.length; i++) {
+    if (layers[i].from <= zMin + BASE_EPSILON) {
+      if (bestIdx < 0 || layers[i].from < layers[bestIdx].from) bestIdx = i;
+    }
+  }
+  return bestIdx;
 }
 
 function collectUsedColors(perObject: Array<{ layers: LayerSpan[] }>): string[] {
@@ -37,7 +57,24 @@ export default function LayerColorsPanel({className, style}: {className?: string
   const state = model.state;
 
   const components = state.output?.componentBboxes ?? [];
-  const config = state.params.layerColors ?? [];
+  // Source-declared defaults (`// @layer-colors object N: ...`) are used when
+  // the user hasn't overridden anything via the panel.
+  const sourceConfig = useMemo(() => parseLayerColorsFromSource(model.source), [model.source]);
+  const userConfig = state.params.layerColors;
+  const config = userConfig ?? sourceConfig;
+  const hasUserOverride = userConfig !== undefined;
+  const differsFromSource = hasUserOverride && !layerColorsEqual(userConfig, sourceConfig);
+  const codeSnippet = useMemo(() => formatLayerColorsForSource(config), [config]);
+
+  const [showCodeOpen, setShowCodeOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(codeSnippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* ignore — user can still select+copy from the textarea */ }
+  };
 
   const usedColors = useMemo(() => collectUsedColors(config), [config]);
   const palette = useMemo(() => {
@@ -86,6 +123,98 @@ export default function LayerColorsPanel({className, style}: {className?: string
           onChange={(layers) => model.setLayerColors(idx, layers)}
         />
       ))}
+
+      {objectsAvailable && (
+        <div style={{
+          display: 'flex',
+          gap: 6,
+          flexWrap: 'wrap',
+          padding: '6px 4px 2px',
+          borderTop: '1px dashed var(--surface-border)',
+          marginTop: 4,
+        }}>
+          <Button
+            label="Show code"
+            icon="pi pi-code"
+            size="small"
+            text
+            onClick={() => setShowCodeOpen(true)}
+            tooltip="Paste this into your .scad file to embed the current layer colors"
+            tooltipOptions={{ position: 'top' }}
+          />
+          {differsFromSource && (
+            <Button
+              label="Reset to source"
+              icon="pi pi-refresh"
+              size="small"
+              text
+              severity="secondary"
+              onClick={() => model.resetLayerColorsToSource()}
+              tooltip="Drop your edits and use the colors declared in the source"
+              tooltipOptions={{ position: 'top' }}
+            />
+          )}
+          {!hasUserOverride && sourceConfig.length > 0 && (
+            <span style={{
+              alignSelf: 'center',
+              fontSize: 11,
+              color: 'var(--surface-fg-faint)',
+              marginLeft: 'auto',
+            }}>
+              Using source colors
+            </span>
+          )}
+        </div>
+      )}
+
+      <Dialog
+        header="Layer-colors source snippet"
+        visible={showCodeOpen}
+        modal
+        onHide={() => setShowCodeOpen(false)}
+        style={{ width: 'min(640px, 92vw)' }}
+      >
+        <div style={{ fontSize: 12, color: 'var(--surface-fg-faint)', marginBottom: 8, lineHeight: 1.55 }}>
+          Paste these lines anywhere in your <code>.scad</code> file (top of the
+          file is a good spot). When no overrides are set in the panel, HotSCAD
+          will use these as the layer colors on every render.
+        </div>
+        <textarea
+          readOnly
+          value={codeSnippet || '// (no layer colors configured)'}
+          style={{
+            width: '100%',
+            minHeight: 140,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 12,
+            padding: 10,
+            border: '1px solid var(--surface-border)',
+            borderRadius: 4,
+            background: 'var(--surface-row-bg)',
+            color: 'var(--surface-fg-strong)',
+            resize: 'vertical',
+            whiteSpace: 'pre',
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, justifyContent: 'flex-end' }}>
+          <Button
+            label={copied ? 'Copied' : 'Copy'}
+            icon={copied ? 'pi pi-check' : 'pi pi-copy'}
+            size="small"
+            disabled={!codeSnippet}
+            onClick={copy}
+          />
+          <Button
+            label="Close"
+            icon="pi pi-times"
+            size="small"
+            text
+            severity="secondary"
+            onClick={() => setShowCodeOpen(false)}
+          />
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -170,11 +299,13 @@ function VerticalPreview({zMin, zMax, layers, width, height}: {
  * neighbors so handles can't cross.
  */
 function HorizontalSlider({
-  zMin, zMax, layers, onChange,
+  zMin, zMax, layers, onChange, hideHandleAt,
 }: {
   zMin: number; zMax: number;
   layers: LayerSpan[];
   onChange: (next: LayerSpan[]) => void;
+  /** Original-index of a layer whose drag handle should not be rendered (e.g. the base). */
+  hideHandleAt?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const total = zMax - zMin || 1;
@@ -232,6 +363,7 @@ function HorizontalSlider({
         );
       })}
       {sortedIdx.map((origIdx, i) => {
+        if (origIdx === hideHandleAt) return null;
         const l = layers[origIdx];
         const left = ((l.from - zMin) / total) * 100;
         return (
@@ -276,18 +408,19 @@ function ObjectLayers({
 }) {
   const fmt = (n: number) => n.toFixed(2);
 
+  const baseIdx = findBaseLayerIndex(layers, zMin);
+  const hasBase = baseIdx >= 0;
+  const baseColor = hasBase ? layers[baseIdx].color : null;
+
   const addLayer = () => {
-    let nextFrom: number;
-    if (layers.length === 0) {
-      // First layer covers the whole object from the bottom.
-      nextFrom = zMin;
-    } else {
-      // Split between the highest existing threshold and the top of the object.
-      const sorted = sortedByFrom(layers);
-      const last = sorted[sorted.length - 1].from;
-      nextFrom = Math.min(zMax, (last + zMax) / 2);
-      nextFrom = Math.round(nextFrom * 100) / 100;
-    }
+    // Adds a threshold (never a base — there's a separate picker for that).
+    // Default at midpoint of the highest existing threshold (or zMin) and zMax.
+    const startFrom = layers.length > 0
+      ? Math.max(...layers.map(l => l.from))
+      : zMin;
+    let nextFrom = (startFrom + zMax) / 2;
+    nextFrom = Math.max(zMin + 0.01, Math.min(zMax, nextFrom));
+    nextFrom = Math.round(nextFrom * 100) / 100;
     const color = palette[layers.length % palette.length] ?? DEFAULT_PALETTE[0];
     onChange([...layers, { from: nextFrom, color }]);
   };
@@ -300,6 +433,24 @@ function ObjectLayers({
     onChange(layers.filter((_, j) => j !== i));
   };
 
+  const setBaseColor = (color: string) => {
+    if (hasBase) {
+      updateLayer(baseIdx, { color });
+    } else {
+      // Pin the new base layer at zMin. Prepended so it's clearly the bottom.
+      onChange([{ from: zMin, color }, ...layers]);
+    }
+  };
+
+  const clearBase = () => {
+    if (hasBase) onChange(layers.filter((_, j) => j !== baseIdx));
+  };
+
+  // Indices to render in the threshold list — everything except the base.
+  const thresholdIndices = layers
+    .map((_, i) => i)
+    .filter(i => i !== baseIdx);
+
   return (
     <Fieldset
       legend={`Object ${index + 1}  —  ${fmt(dims[0])} × ${fmt(dims[1])} × ${fmt(dims[2])} mm`}
@@ -310,12 +461,58 @@ function ObjectLayers({
         adjust per-row to set thresholds.
       </div>
 
+      {/* Base color: applies from the bottom of the object up to the first
+          threshold. No draggable handle — it's pinned to zMin. */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        padding: '6px 8px',
+        marginBottom: 10,
+        background: 'var(--surface-row-bg)',
+        border: '1px solid var(--surface-border)',
+        borderRadius: 4,
+        fontSize: 12,
+      }}>
+        <span style={{color: 'var(--surface-fg-muted)', fontWeight: 600}}>Base color</span>
+        <input
+          type="color"
+          value={baseColor ?? '#cccccc'}
+          onChange={(e) => setBaseColor(e.target.value)}
+          style={{width: 32, height: 28, border: '1px solid #ccc', borderRadius: 3, padding: 0, cursor: 'pointer'}}
+          title="Pick base color (applied from the bottom of the object)"
+        />
+        {!hasBase && (
+          <span style={{color: 'var(--surface-fg-faint)', fontSize: 11}}>
+            (using model default)
+          </span>
+        )}
+        <div style={{flex: 1, minWidth: 0}}>
+          <ColorSwatchRow current={baseColor ?? ''} palette={palette} onPick={setBaseColor} />
+        </div>
+        {hasBase && (
+          <Button
+            icon="pi pi-times"
+            text
+            severity="danger"
+            size="small"
+            tooltip="Clear base color (fall back to model default)"
+            tooltipOptions={{ position: 'left' }}
+            onClick={clearBase}
+          />
+        )}
+      </div>
+
       {/* Two-column area: narrow vertical preview + horizontal interactive slider */}
       <div style={{display: 'flex', gap: 8, alignItems: 'stretch', marginBottom: 10}}>
         <VerticalPreview zMin={zMin} zMax={zMax} layers={layers} width={100} height={140} />
         <div style={{display: 'flex', flexDirection: 'column', justifyContent: 'space-between', flex: 1, minWidth: 0}}>
           <div style={{fontSize: 10, color: 'var(--surface-fg-muted)', marginBottom: 4}}>Thresholds (drag to adjust):</div>
-          <HorizontalSlider zMin={zMin} zMax={zMax} layers={layers} onChange={onChange} />
+          <HorizontalSlider
+            zMin={zMin} zMax={zMax} layers={layers} onChange={onChange}
+            hideHandleAt={hasBase ? baseIdx : undefined}
+          />
           <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--surface-fg-muted)', marginTop: 4}}>
             <span>{fmt(zMin)} mm</span>
             <span>{fmt(zMax)} mm</span>
@@ -325,12 +522,14 @@ function ObjectLayers({
 
       {/* Layer rows */}
       <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
-        {layers.length === 0 && (
+        {thresholdIndices.length === 0 && (
           <div style={{color: 'var(--surface-fg-faint)', fontSize: 12, fontStyle: 'italic'}}>
-            No layer thresholds set. Click "Add layer" to start.
+            No layer thresholds set. Click "Add layer" to color a range above the base.
           </div>
         )}
-        {layers.map((l, i) => (
+        {layers.map((l, i) => {
+          if (i === baseIdx) return null;
+          return (
           <div key={i} style={{
             display: 'flex',
             flexDirection: 'column',
@@ -388,7 +587,8 @@ function ObjectLayers({
               <ColorSwatchRow current={l.color} palette={palette} onPick={(c) => updateLayer(i, {color: c})} />
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{marginTop: 8, display: 'flex', gap: 6}}>

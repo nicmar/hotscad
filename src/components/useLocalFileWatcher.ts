@@ -68,6 +68,11 @@ export function useLocalFileWatcher(model: Model | null) {
         s.currentRunLogs = undefined;
         s.error = undefined;
         s.is2D = undefined;
+        // Layer-color overrides are persisted per URL fragment, not per file,
+        // so a previous file's override would otherwise shadow the new file's
+        // source-declared `// @layer-colors` lines. Drop it and let the new
+        // source provide defaults; the user can re-edit in the panel.
+        s.params.layerColors = undefined;
         s.params.watchedLocalFile = { name: session.fileName, lastModified: Date.now() };
       });
       await model.loadExternalSource(initial);

@@ -25,6 +25,40 @@ MIRROR="${MIRROR:-0}"
 # Expand ~ if .env used a literal ~ instead of $HOME.
 DEPLOY_TARGET="${DEPLOY_TARGET/#\~/$HOME}"
 
+# Version sanity check: warn if package.json is still on the previously
+# released version, because the in-app badge won't change and there's no way
+# to verify the new code actually shipped. Set ALLOW_SAME_VERSION=1 to skip.
+VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo unknown)"
+LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+LAST_TAG_VERSION="${LAST_TAG#v}"
+
+if [ "$VERSION" != "unknown" ] && [ -n "$LAST_TAG_VERSION" ] && [ "$VERSION" = "$LAST_TAG_VERSION" ]; then
+  echo ""
+  echo "WARNING: package.json is still at v$VERSION, same as the last tag ($LAST_TAG)."
+  echo "         The in-app version badge won't change, so you won't be able to"
+  echo "         tell whether the new code actually landed on the server."
+  echo ""
+  echo "         Bump the version first with one of:"
+  echo "             npm version patch    # 0.1.0 -> 0.1.1  (bug fixes)"
+  echo "             npm version minor    # 0.1.0 -> 0.2.0  (new features)"
+  echo "             npm version major    # 0.1.0 -> 1.0.0  (breaking)"
+  echo "         Then:  git push --follow-tags"
+  echo ""
+  if [ "${ALLOW_SAME_VERSION:-0}" = "1" ]; then
+    echo "         ALLOW_SAME_VERSION=1 set, continuing anyway."
+    echo ""
+  elif [ -t 0 ]; then
+    read -rp "         Continue anyway? [y/N] " ans
+    case "$ans" in
+      y|Y|yes|YES) echo "         Continuing." ; echo "" ;;
+      *) echo "         Aborted." ; exit 1 ;;
+    esac
+  else
+    echo "         Non-interactive shell, aborting. Set ALLOW_SAME_VERSION=1 to override."
+    exit 1
+  fi
+fi
+
 echo "==> Building (npm run $BUILD_SCRIPT)"
 npm run "$BUILD_SCRIPT"
 
@@ -47,7 +81,6 @@ fi
 # pulls from), stage everything, commit with the current package.json version,
 # and push. Set DEPLOY_PUSH=0 in .env to commit without pushing.
 if git -C "$DEPLOY_TARGET" rev-parse --git-dir >/dev/null 2>&1; then
-  VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo unknown)"
   echo "==> Staging changes in $DEPLOY_TARGET"
   git -C "$DEPLOY_TARGET" add -A
   if git -C "$DEPLOY_TARGET" diff --cached --quiet; then

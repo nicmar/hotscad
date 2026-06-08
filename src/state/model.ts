@@ -13,6 +13,7 @@ import { parseOff } from "../io/import_off.ts";
 import { exportGlb } from "../io/export_glb.ts";
 import { computeConnectedComponentsWithMapping } from "../io/components.ts";
 import { applyLayerColors } from "../io/recolor.ts";
+import { parseLayerColorsFromSource } from "../io/layer_colors_source.ts";
 import { export3MF } from "../io/export_3mf.ts";
 import chroma from "chroma-js";
 import { reconcileVarsWithParameterSet } from './customizer-reconcile';
@@ -189,7 +190,9 @@ export class Model {
       const offText = await output.outFile.text();
       const off = parseOff(offText);
       const mapping = computeConnectedComponentsWithMapping(off);
-      const layerColors = this.state.params.layerColors ?? [];
+      // state.params.layerColors is the user-edited override; if unset, fall
+      // back to colors declared in source (`// @layer-colors object N: ...`).
+      const layerColors = this.state.params.layerColors ?? parseLayerColorsFromSource(this.source);
       const colored = layerColors.length > 0
         ? applyLayerColors(off, mapping.faceToComponent, layerColors)
         : off;
@@ -214,11 +217,21 @@ export class Model {
 
   async setLayerColors(componentIdx: number, layers: Array<{from: number; color: string}>): Promise<void> {
     this.mutate(s => {
-      const cfg = (s.params.layerColors ?? []).slice();
+      // First edit after a fresh load: materialize source defaults so the user
+      // doesn't accidentally drop other objects' source-declared colors by
+      // editing this one.
+      const base = s.params.layerColors ?? parseLayerColorsFromSource(this.source);
+      const cfg = base.slice();
       while (cfg.length <= componentIdx) cfg.push({ layers: [] });
       cfg[componentIdx] = { layers: [...layers] };
       s.params.layerColors = cfg;
     });
+    await this.recolor();
+  }
+
+  /** Drop the user-edited override, falling back to whatever the source declares. */
+  async resetLayerColorsToSource(): Promise<void> {
+    this.mutate(s => { s.params.layerColors = undefined; });
     await this.recolor();
   }
 
@@ -493,8 +506,8 @@ export class Model {
         componentBboxes = mapping.components.map(c => ({
           min: c.min, max: c.max, center: c.center, size: c.size,
         }));
-        const layerColors = this.state.params.layerColors;
-        const colored = layerColors && layerColors.length > 0
+        const layerColors = this.state.params.layerColors ?? parseLayerColorsFromSource(this.source);
+        const colored = layerColors.length > 0
           ? applyLayerColors(offData, mapping.faceToComponent, layerColors)
           : offData;
         displayFile = new File([await exportGlb(colored)], displayFile.name.replace('.off', '.glb'));
