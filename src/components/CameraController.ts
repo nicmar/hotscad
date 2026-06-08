@@ -108,8 +108,31 @@ export function attachCameraController(
   type Mode = 'rotate' | 'pan' | null;
   const activePointers = new Map<number, { x: number; y: number; type: string }>();
   let mode: Mode = null;
+  // True while Shift+RMB drag is active: free-look + WASD walk. Plain RMB
+  // keeps it false and orbits around the target. Shift can be pressed before
+  // OR after the mouse button — we recompute whenever either changes.
+  let flyMode = false;
+  let activeMouseButton: number | null = null;
+  let shiftHeld = false;
   let lastCentroidX = 0, lastCentroidY = 0;
   let lastPinchDist = 0;
+
+  function shouldFly(): boolean {
+    return (
+      readSettings().wasdNav &&
+      mode === 'rotate' &&
+      activeMouseButton === 2 &&
+      shiftHeld
+    );
+  }
+  function syncFlyMode() {
+    const next = shouldFly();
+    if (next === flyMode) return;
+    flyMode = next;
+    // Leaving fly mode drops any held walk keys so a still-held W doesn't
+    // keep stepping after Shift is released mid-drag.
+    if (!flyMode) heldKeys.clear();
+  }
 
   // Keys currently held for WASD/QE walk-mode (active only while a mouse-rotate
   // gesture is in progress — Unity scene-view convention: hold the rotate
@@ -130,12 +153,11 @@ export function attachCameraController(
       }
     }
 
-    // 2) WASD/QE walk while the rotate mouse button is held
-    const settings = readSettings();
+    // 2) WASD/QE walk only while Shift+RMB fly mode is active.
     const dt = lastFrameTs ? (ts - lastFrameTs) / 1000 : 0;
     lastFrameTs = ts;
     if (
-      settings.wasdNav &&
+      flyMode &&
       mode === 'rotate' &&
       heldKeys.size > 0 &&
       dt > 0 && dt < 0.25
@@ -170,12 +192,13 @@ export function attachCameraController(
 
   function rotate(dx: number, dy: number) {
     const orbit = el.getCameraOrbit();
-    // Unity scene-view feels around 0.005 rad/pixel for RMB look.
-    const sens = readSettings().wasdNav ? 0.005 : 0.02;
+    // Unity scene-view feels around 0.005 rad/pixel for RMB look; orbit can
+    // be brisker since it doesn't need the precision of an aiming gesture.
+    const sens = flyMode ? 0.005 : 0.02;
     const newTheta = orbit.theta - dx * sens;
     const newPhi = clampPhi(orbit.phi - dy * sens);
 
-    if (readSettings().wasdNav) {
+    if (flyMode) {
       // Free-look (FPS-style): pivot is the camera itself, not the target.
       // model-viewer computes camera position from target + sphericalOffset, so
       // to rotate the camera in place we change the angles AND move target so
@@ -290,8 +313,13 @@ export function attachCameraController(
 
     if (e.pointerType === 'mouse') {
       mode = modeForMouse(e.button, e.shiftKey);
+      activeMouseButton = e.button;
+      shiftHeld = e.shiftKey;
+      syncFlyMode();
     } else if (e.pointerType === 'touch' || e.pointerType === 'pen') {
       mode = activePointers.size === 1 ? 'rotate' : 'pan';
+      activeMouseButton = null;
+      flyMode = false;
     }
     const c = centroid();
     lastCentroidX = c.x;
@@ -331,6 +359,9 @@ export function attachCameraController(
     try { el.releasePointerCapture(e.pointerId); } catch {}
     if (activePointers.size === 0) {
       mode = null;
+      activeMouseButton = null;
+      flyMode = false;
+      heldKeys.clear();
     } else {
       const c = centroid();
       lastCentroidX = c.x;
@@ -356,7 +387,12 @@ export function attachCameraController(
   // fly mode. Listening on window so focus state doesn't matter mid-drag.
   const WALK_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e']);
   const onKeyDown = (e: KeyboardEvent) => {
-    if (!readSettings().wasdNav) return;
+    if (e.key === 'Shift') {
+      shiftHeld = true;
+      syncFlyMode();
+      return;
+    }
+    if (!flyMode) return;
     if (mode !== 'rotate') return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
@@ -365,13 +401,18 @@ export function attachCameraController(
     e.preventDefault();
   };
   const onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === 'Shift') {
+      shiftHeld = false;
+      syncFlyMode();
+      return;
+    }
     const k = e.key.toLowerCase();
     if (heldKeys.has(k)) {
       heldKeys.delete(k);
       e.preventDefault();
     }
   };
-  const onBlur = () => { heldKeys.clear(); };
+  const onBlur = () => { heldKeys.clear(); shiftHeld = false; syncFlyMode(); };
 
   el.addEventListener('pointerdown', onPointerDown);
   el.addEventListener('pointermove', onPointerMove);

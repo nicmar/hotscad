@@ -91,20 +91,40 @@ function regroupBySectionMarkers(params: Parameter[]): Array<{ group: string; pa
   return out;
 }
 
-/* ------------------------- BATTERIES ARRAY EDITOR -------------------------- */
+/* --------------------- GENERIC ARRAY-OF-ARRAYS EDITOR ---------------------- */
+/**
+ * Any top-level `name = [[...], [...], ...]` declaration in the source becomes
+ * a row/column table editor in the Customize panel, with cell types inferred
+ * from the data (string → text input, number → number input, boolean →
+ * checkbox).
+ *
+ * Documentation lives in the source, not in this component:
+ *   - `//` lines immediately above the declaration become the help text.
+ *   - A line like `// @columns Name, D, T, Cols, Rows, Flat` defines column
+ *     headers. Without it, headers fall back to "Col 1, Col 2, ...".
+ *
+ * Plain numeric arrays-of-arrays (polygons, point lists) are NOT picked up —
+ * the heuristic requires at least one column to be a string or boolean.
+ */
 
-type Battery = [string, number, number, number, number] | [string, number, number, number, number, boolean];
+type CellType = 'string' | 'number' | 'boolean';
+type ArrayCell = string | number | boolean;
+type ArrayRow = ArrayCell[];
+
+type ArrayDecl = {
+  name: string;
+  description: string;
+  headers: string[];
+  types: CellType[];
+  defaultRows: ArrayRow[];
+};
 
 /**
- * Walks a SCAD source and finds `varName = [...]`, returning the
- * bracket-balanced array literal (or null). Skips string/comment content
- * so brackets inside comments or strings don't throw off counting.
+ * Walks a SCAD source and finds the array literal that starts at `start`
+ * (the index of the opening `[`). Returns the bracket-balanced slice ending
+ * at the matching `]`, or null. Skips string/comment content.
  */
-function extractArrayLiteral(source: string, varName: string): string | null {
-  const re = new RegExp(`(^|[\\s\\n;])${varName}\\s*=\\s*`, 'm');
-  const m = source.match(re);
-  if (!m) return null;
-  const start = (m.index ?? 0) + m[0].length;
+function readArrayLiteralAt(source: string, start: number): string | null {
   if (source[start] !== '[') return null;
   let i = start, depth = 0;
   while (i < source.length) {
@@ -133,97 +153,228 @@ function extractArrayLiteral(source: string, varName: string): string | null {
   return null;
 }
 
-function parseBatteries(source: string): Battery[] | null {
-  const literal = extractArrayLiteral(source, 'batteries');
-  if (!literal) return null;
-  let s = literal
+function tryParseRows(literal: string): ArrayRow[] | null {
+  const stripped = literal
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '')
     .replace(/,(\s*[\]}])/g, '$1');
   try {
-    const parsed = JSON.parse(s);
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter(row => Array.isArray(row) && row.length >= 5) as Battery[];
+    const parsed = JSON.parse(stripped);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    if (!parsed.every(row => Array.isArray(row) && row.every(cell =>
+      typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean'
+    ))) return null;
+    return parsed as ArrayRow[];
   } catch {
     return null;
   }
 }
 
-function BatteriesEditor() {
+function inferColumnTypes(rows: ArrayRow[]): CellType[] {
+  const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  const types: CellType[] = [];
+  for (let c = 0; c < maxCols; c++) {
+    const seen = new Set<CellType>();
+    for (const row of rows) {
+      if (c < row.length) seen.add(typeof row[c] as CellType);
+    }
+    // Prefer the most permissive type: any string wins; otherwise boolean only
+    // if every observation is boolean; otherwise number.
+    if (seen.has('string')) types.push('string');
+    else if (seen.size === 1 && seen.has('boolean')) types.push('boolean');
+    else types.push('number');
+  }
+  return types;
+}
+
+/**
+ * Collects the contiguous block of `//` comment lines immediately above the
+ * given character position, in source order. A blank line breaks the block.
+ */
+function collectCommentsAbove(source: string, position: number): string[] {
+  const before = source.slice(0, position).split('\n');
+  // The last entry is the partial line containing the declaration; skip it.
+  const out: string[] = [];
+  for (let i = before.length - 2; i >= 0; i--) {
+    const t = before[i].trim();
+    if (t === '') break;
+    if (!t.startsWith('//')) break;
+    out.unshift(t.replace(/^\/\/\s?/, ''));
+  }
+  return out;
+}
+
+function parseCommentBlock(lines: string[]): { description: string; headers: string[] | null } {
+  let headers: string[] | null = null;
+  const descParts: string[] = [];
+  for (const line of lines) {
+    const m = line.match(/^@columns?\s+(.+)$/i);
+    if (m) {
+      headers = m[1].split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+    } else {
+      descParts.push(line);
+    }
+  }
+  // Join with \n so an empty `//` line becomes a visible paragraph break
+  // (paired with `whiteSpace: pre-wrap` on the rendered <div>).
+  return { description: descParts.join('\n').trim(), headers };
+}
+
+function findArrayDeclarations(source: string): ArrayDecl[] {
+  const out: ArrayDecl[] = [];
+  const seen = new Set<string>();
+  // Top-level "name = [" — only at start of line (with whitespace) to avoid
+  // matching array literals inside expressions or function calls.
+  const re = /^[\t ]*([A-Za-z_][\w]*)\s*=\s*\[/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    const bracketIdx = (m.index ?? 0) + m[0].length - 1; // position of the `[`
+    const literal = readArrayLiteralAt(source, bracketIdx);
+    if (!literal) continue;
+    const rows = tryParseRows(literal);
+    if (!rows) continue;
+    const types = inferColumnTypes(rows);
+    // Skip pure numeric matrices (polygons, point lists, etc.).
+    if (types.every(t => t === 'number')) continue;
+    const comments = collectCommentsAbove(source, m.index ?? 0);
+    const { description, headers: parsedHeaders } = parseCommentBlock(comments);
+    const headers = parsedHeaders ?? rows[0].map((_, i) => `Col ${i + 1}`);
+    out.push({ name, description, headers, types, defaultRows: rows });
+    seen.add(name);
+  }
+  return out;
+}
+
+function defaultForType(t: CellType): ArrayCell {
+  if (t === 'string') return '';
+  if (t === 'boolean') return false;
+  return 0;
+}
+
+function gridTemplate(types: CellType[]): string {
+  // First string column gets 1fr; remaining strings get 1fr too; numbers fixed
+  // 64px; booleans fixed 44px; trailing 28px delete button.
+  const cols = types.map(t => {
+    if (t === 'string') return 'minmax(80px, 1fr)';
+    if (t === 'boolean') return '44px';
+    return '64px';
+  });
+  return [...cols, '28px'].join(' ');
+}
+
+function ArrayDeclEditor({ decl }: { decl: ArrayDecl }) {
   const model = useContext(ModelContext);
   if (!model) throw new Error('No model');
   const state = model.state;
 
-  const source = model.source;
-  const sourceDefault = useMemo(() => parseBatteries(source), [source]);
-  const override = (state.params.vars ?? {}).batteries as Battery[] | undefined;
-  const current: Battery[] = override ?? sourceDefault ?? [];
+  const override = (state.params.vars ?? {})[decl.name] as ArrayRow[] | undefined;
+  const current: ArrayRow[] = override ?? decl.defaultRows;
 
-  if (!sourceDefault) return null;
+  const setValue = (next: ArrayRow[]) => model.setVar(decl.name, next);
 
-  const setValue = (next: Battery[]) => model.setVar('batteries', next);
-
-  const updateRow = (i: number, patch: Partial<{name: string; d: number; t: number; cols: number; rows: number; flat: boolean}>) => {
-    const row = current[i];
-    const name = patch.name  ?? row[0];
-    const d    = patch.d     ?? row[1];
-    const t    = patch.t     ?? row[2];
-    const cols = patch.cols  ?? row[3];
-    const rows = patch.rows  ?? row[4];
-    const flat = patch.flat  ?? row[5] ?? false;
-    const nextRow: Battery = flat ? [name, d, t, cols, rows, true] : [name, d, t, cols, rows];
-    setValue(current.map((r, j) => (j === i ? nextRow : r)));
+  const updateCell = (rowIdx: number, colIdx: number, value: ArrayCell) => {
+    const next = current.map((row, ri) => {
+      if (ri !== rowIdx) return row;
+      // Trim trailing falsy-for-default cells so 6-col + 5-col rows can coexist
+      // (the original batteries convention: omit trailing `false` flat flag).
+      const filled: ArrayRow = decl.types.map((t, ci) => {
+        if (ci === colIdx) return value;
+        if (ci < row.length) return row[ci];
+        return defaultForType(t);
+      });
+      let end = filled.length;
+      while (end > 0) {
+        const ci = end - 1;
+        const t = decl.types[ci];
+        const v = filled[ci];
+        const isDefault =
+          (t === 'string'  && v === '') ||
+          (t === 'boolean' && v === false) ||
+          (t === 'number'  && v === 0);
+        if (!isDefault) break;
+        end--;
+      }
+      return filled.slice(0, end);
+    });
+    setValue(next);
   };
 
   const addRow = () => {
-    const next: Battery = ['NewCell', 20, 3, 1, 1];
-    setValue([...current, next]);
+    const blank: ArrayRow = decl.types.map(defaultForType);
+    setValue([...current, blank]);
   };
-
   const removeRow = (i: number) => setValue(current.filter((_, j) => j !== i));
-
-  // "Reset to source" pushes the source-declared array back as the override.
-  // Equivalent in effect to "no override" since the value matches the source.
-  const resetToSource = () => sourceDefault && model.setVar('batteries', sourceDefault);
+  const resetToSource = () => model.setVar(decl.name, decl.defaultRows);
   const isOverridden = override !== undefined &&
-    JSON.stringify(override) !== JSON.stringify(sourceDefault);
+    JSON.stringify(override) !== JSON.stringify(decl.defaultRows);
+
+  const renderCell = (rowIdx: number, colIdx: number, row: ArrayRow) => {
+    const t = decl.types[colIdx];
+    const raw = colIdx < row.length ? row[colIdx] : defaultForType(t);
+    if (t === 'string') {
+      return (
+        <InputText
+          value={String(raw)}
+          onChange={e => updateCell(rowIdx, colIdx, e.target.value)}
+          style={{padding: '2px 6px', fontSize: 12}}
+        />
+      );
+    }
+    if (t === 'boolean') {
+      return (
+        <div style={{textAlign: 'center'}}>
+          <Checkbox
+            checked={Boolean(raw)}
+            onChange={e => updateCell(rowIdx, colIdx, Boolean(e.checked))}
+          />
+        </div>
+      );
+    }
+    return (
+      <InputNumber
+        value={typeof raw === 'number' ? raw : 0}
+        onValueChange={e => updateCell(rowIdx, colIdx, typeof e.value === 'number' ? e.value : 0)}
+        minFractionDigits={Number.isInteger(raw) ? 0 : 1}
+        maxFractionDigits={3}
+        inputStyle={{width: '100%', padding: '2px 6px', fontSize: 12, textAlign: 'right'}}
+      />
+    );
+  };
 
   return (
     <Fieldset
-      legend="Batteries"
+      legend={titleCase(decl.name)}
       toggleable
       style={{
         margin: '5px 10px 5px 10px',
         backgroundColor: 'var(--surface-panel-bg)',
       }}>
-      <div style={{fontSize: 11, color: 'var(--surface-fg-faint)', marginBottom: 6}}>
-        Each row defines one battery type. <code>D</code> = diameter (mm),
-        <code> T</code> = thickness, <code>Cols × Rows</code> = total count,
-        <code> Flat</code> = lie face-up (stacks vertically) instead of upright.
-      </div>
-      <div style={{display: 'grid', gridTemplateColumns: '1fr 60px 60px 50px 50px 40px 28px', gap: 4, alignItems: 'center', fontSize: 12}}>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)'}}>Name</div>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)', textAlign: 'right'}}>D</div>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)', textAlign: 'right'}}>T</div>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)', textAlign: 'right'}}>Cols</div>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)', textAlign: 'right'}}>Rows</div>
-        <div style={{fontWeight: 600, color: 'var(--surface-fg-strong)', textAlign: 'center'}}>Flat</div>
+      {decl.description && (
+        <div style={{fontSize: 11, color: 'var(--surface-fg-faint)', marginBottom: 6, whiteSpace: 'pre-wrap'}}>
+          {decl.description}
+        </div>
+      )}
+      <div style={{display: 'grid', gridTemplateColumns: gridTemplate(decl.types), gap: 4, alignItems: 'center', fontSize: 12}}>
+        {decl.headers.map((h, i) => (
+          <div key={`h-${i}`} style={{
+            fontWeight: 600,
+            color: 'var(--surface-fg-strong)',
+            textAlign: decl.types[i] === 'string'
+              ? 'left'
+              : decl.types[i] === 'boolean'
+                ? 'center'
+                : 'right',
+          }}>{h}</div>
+        ))}
         <div />
 
         {current.map((row, i) => (
           <React.Fragment key={i}>
-            <InputText value={row[0]} onChange={e => updateRow(i, {name: e.target.value})} style={{padding: '2px 6px', fontSize: 12}} />
-            <InputNumber value={row[1]} onValueChange={e => updateRow(i, {d: typeof e.value === 'number' ? e.value : 0})}
-                         minFractionDigits={1} maxFractionDigits={2} inputStyle={{width: '100%', padding: '2px 6px', fontSize: 12, textAlign: 'right'}} />
-            <InputNumber value={row[2]} onValueChange={e => updateRow(i, {t: typeof e.value === 'number' ? e.value : 0})}
-                         minFractionDigits={1} maxFractionDigits={2} inputStyle={{width: '100%', padding: '2px 6px', fontSize: 12, textAlign: 'right'}} />
-            <InputNumber value={row[3]} onValueChange={e => updateRow(i, {cols: typeof e.value === 'number' ? e.value : 1})}
-                         showButtons={false} inputStyle={{width: '100%', padding: '2px 6px', fontSize: 12, textAlign: 'right'}} />
-            <InputNumber value={row[4]} onValueChange={e => updateRow(i, {rows: typeof e.value === 'number' ? e.value : 1})}
-                         showButtons={false} inputStyle={{width: '100%', padding: '2px 6px', fontSize: 12, textAlign: 'right'}} />
-            <div style={{textAlign: 'center'}}>
-              <Checkbox checked={Boolean(row[5])} onChange={e => updateRow(i, {flat: Boolean(e.checked)})} />
-            </div>
+            {decl.types.map((_, c) => (
+              <React.Fragment key={c}>{renderCell(i, c, row)}</React.Fragment>
+            ))}
             <Button icon="pi pi-times" text severity="danger" size="small" onClick={() => removeRow(i)} tooltip="Remove" tooltipOptions={{position: 'left'}} />
           </React.Fragment>
         ))}
@@ -238,6 +389,15 @@ function BatteriesEditor() {
       </div>
     </Fieldset>
   );
+}
+
+function ArrayEditors() {
+  const model = useContext(ModelContext);
+  if (!model) throw new Error('No model');
+  const source = model.source;
+  const decls = useMemo(() => findArrayDeclarations(source), [source]);
+  if (decls.length === 0) return null;
+  return <>{decls.map(d => <ArrayDeclEditor key={d.name} decl={d} />)}</>;
 }
 
 /* ----------------------------- PARAMETER INPUT ----------------------------- */
@@ -461,7 +621,7 @@ export default function CustomizerPanel({className, style}: {className?: string,
           tooltipOptions={{position: 'left', showOnDisabled: true}}
         />
       </div>
-      {!filterActive && <BatteriesEditor />}
+      {!filterActive && <ArrayEditors />}
       {flatFilteredParams !== null ? (
         flatFilteredParams.length === 0 ? (
           <div style={{

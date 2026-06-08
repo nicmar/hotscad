@@ -1046,6 +1046,25 @@
           <video src="videos/layer-colors.mp4" muted loop playsinline preload="metadata"></video>
         </div>
       </div>
+
+      <div class="feature">
+        <div class="fbox">
+          <h3>Array tables (rows of data, not knobs)</h3>
+          <p>Any top-level <span class="mono">name = [[...], [...]]</span> assignment in your <span class="mono">.scad</span> turns into a table editor. Cell types are auto-detected, so strings become text inputs, numbers become spinners, booleans become checkboxes.</p>
+          <p>Headers and the help text on top come from the comments above the array. Name the columns like this<br /><span class="mono">// @columns Name, D, T, Cols, Rows, Flat</span><br />Other comments <span class="mono">//</span> lines above the array become the description.</p>
+          <p>So a battery layout like this:</p>
+<pre style="background:var(--bg-elev);border:1px solid var(--hair);border-radius:8px;padding:14px 16px;margin:6px 0 0;font-size:12.5px;line-height:1.55;color:var(--ink);overflow-x:auto;"><span style="color:var(--ink-soft);">// Each row defines one battery type. <br />// Flat = lie face-up
+// @columns Name, D, T, Cols, Rows, Flat</span>
+batteries = [
+    [<span style="color:#9ece6a;">"CR2032"</span>, 20.0, 3.2, 3, 9],
+    [<span style="color:#9ece6a;">"CR2430"</span>, 24.5, 3.0, 1, 6, <span style="color:var(--hot);">true</span>],
+    <span style="color:var(--ink-soft);">// ...</span>
+];</pre>
+        </div>
+        <button class="shot" type="button" data-src="screenshots/array-editor.png" data-label="Array table editor">
+          <img src="screenshots/array-editor.png" alt="Array editor showing battery types as an editable table">
+        </button>
+      </div>
     </section>
 
     <!-- =========================================================== HEADS-UP -->

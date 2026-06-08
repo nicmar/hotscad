@@ -134,6 +134,16 @@ export default function ViewerPanel({className, style}: {className?: string, sty
     };
   }, [modelUri]);
 
+  // When the active source file changes (e.g. user picks a different file with
+  // "Open Local…" or switches tabs), drop any stashed camera so the next model
+  // load uses model-viewer's auto-framing instead of restoring the previous
+  // file's view — otherwise the new model can land off-screen. Mounting the
+  // panel for the first time runs this once with `stashedCameraRef.current`
+  // already null, which is a no-op.
+  useEffect(() => {
+    stashedCameraRef.current = null;
+  }, [state.params.activePath]);
+
   const goHome = useCallback(() => {
     const el = modelViewerRef.current;
     if (!el) return;
